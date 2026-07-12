@@ -12,12 +12,114 @@ html,body{width:100%;height:100%;overflow:hidden;background:#1a1a2e;font-family:
 #gameCanvas{display:block;width:100%;height:100%;touch-action:none}
 #ui-overlay{position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:10}
 #ui-overlay>*{pointer-events:auto}
+/* === UI Overlay === */
+.ui-panel{position:absolute;top:0;left:0;width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,0.7);z-index:100}
+.ui-hidden{display:none!important}
+.ui-btn{background:rgba(74,144,217,0.2);border:1px solid rgba(74,144,217,0.5);border-radius:8px;color:#fff;cursor:pointer;font-size:16px;font-weight:bold;padding:10px 32px;margin:6px;transition:background .15s}
+.ui-btn:hover{background:rgba(74,144,217,0.4)}
+.ui-btn-sm{padding:6px 20px;font-size:14px}
+.ui-title{color:#ffdd57;font-size:44px;font-weight:bold;margin-bottom:8px}
+.ui-subtitle{color:rgba(255,255,255,0.5);font-size:16px;margin-bottom:24px}
+/* HUD */
+#hud{position:absolute;top:0;left:0;width:100%;padding:10px 16px;display:flex;justify-content:space-between;align-items:flex-start;pointer-events:none;z-index:50}
+#hud>*{pointer-events:auto}
+.hud-box{background:rgba(0,0,0,0.4);border-radius:8px;padding:4px 12px;color:#fff;font-size:18px;font-weight:bold}
+.hud-timer{background:rgba(0,0,0,0.4);border-radius:8px;padding:4px 16px;font-size:22px;font-weight:bold;text-align:center}
+.hud-timer.warning{color:#ff4444}
+.hud-combo{background:rgba(0,0,0,0.4);border-radius:8px;padding:4px 12px;color:#ffdd57;font-size:18px;font-weight:bold}
+#pauseBtn{background:rgba(0,0,0,0.4);border:none;border-radius:8px;color:rgba(255,255,255,0.8);font-size:20px;font-weight:bold;padding:4px 12px;cursor:pointer}
 </style>
 </head>
 <body>
 <div id="gameContainer">
   <canvas id="gameCanvas"></canvas>
-  <div id="ui-overlay"></div>
+  <div id="ui-overlay">
+    <!-- HUD -->
+    <div id="hud" class="ui-hidden">
+      <div class="hud-box" id="scoreDisplay">0</div>
+      <div class="hud-timer" id="timerDisplay">15s</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="hud-combo ui-hidden" id="comboDisplay">0x combo</div>
+        <button id="pauseBtn">||</button>
+      </div>
+    </div>
+
+    <!-- Menu Panel -->
+    <div class="ui-panel" id="menuPanel">
+      <div class="ui-title">Balloon Attack</div>
+      <div class="ui-subtitle">点击气球。刷新你的分数。</div>
+      <div id="modeList">
+        <button class="ui-btn" data-mode="classic" style="width:220px">Classic 15s</button>
+        <button class="ui-btn" data-mode="blitz" style="width:220px">Blitz 10s</button>
+        <button class="ui-btn" data-mode="marathon" style="width:220px">Marathon 30s</button>
+        <button class="ui-btn" data-mode="zen" style="width:220px">Zen ∞</button>
+      </div>
+      <div style="margin-top:16px;display:flex;gap:8px">
+        <button class="ui-btn ui-btn-sm" data-panel="leaderboard">排行榜</button>
+        <button class="ui-btn ui-btn-sm" data-panel="achievements">成就</button>
+        <button class="ui-btn ui-btn-sm" data-panel="challenges">挑战</button>
+        <button class="ui-btn ui-btn-sm" data-panel="settings">设置</button>
+      </div>
+      <div style="position:absolute;bottom:15px;color:rgba(255,255,255,0.2);font-size:11px">Inspired by 大富翁4 QiCaiQiQiu</div>
+    </div>
+
+    <!-- Game Over Panel -->
+    <div class="ui-panel ui-hidden" id="gameOverPanel">
+      <div class="ui-title" style="font-size:36px">Game Over</div>
+      <div style="color:#fff;font-size:28px;font-weight:bold;margin:8px 0" id="finalScore">0</div>
+      <div style="color:rgba(255,255,255,0.4);font-size:15px" id="finalStats"></div>
+      <div style="margin-top:20px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center">
+        <button class="ui-btn" id="retryBtn">再来一局</button>
+        <button class="ui-btn" id="replayBtn" style="display:none">观看回放</button>
+        <button class="ui-btn" id="menuBtn">返回菜单</button>
+      </div>
+    </div>
+
+    <!-- Pause Panel -->
+    <div class="ui-panel ui-hidden" id="pausePanel">
+      <div style="color:#fff;font-size:32px;font-weight:bold;margin-bottom:24px">暂停</div>
+      <button class="ui-btn" id="resumeBtn">继续</button>
+      <button class="ui-btn" id="restartBtn">重新开始</button>
+      <button class="ui-btn" id="quitBtn">退出</button>
+    </div>
+
+    <!-- Leaderboard Panel -->
+    <div class="ui-panel ui-hidden" id="leaderboardPanel">
+      <div class="ui-title" style="font-size:36px">排行榜</div>
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button class="ui-btn ui-btn-sm" data-lb-tab="classic">Classic</button>
+        <button class="ui-btn ui-btn-sm" data-lb-tab="blitz">Blitz</button>
+        <button class="ui-btn ui-btn-sm" data-lb-tab="marathon">Marathon</button>
+        <button class="ui-btn ui-btn-sm" data-lb-tab="zen">Zen</button>
+      </div>
+      <div id="lbEntries" style="color:rgba(255,255,255,0.6);font-size:14px;text-align:center;min-height:100px;display:flex;align-items:center">暂无记录</div>
+      <button class="ui-btn ui-btn-sm" data-panel="menu" style="margin-top:12px">返回</button>
+    </div>
+
+    <!-- Achievements Panel -->
+    <div class="ui-panel ui-hidden" id="achievementsPanel">
+      <div class="ui-title" style="font-size:36px">成就</div>
+      <div id="achGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;max-width:400px;margin:16px 0;color:rgba(255,255,255,0.6);font-size:14px;text-align:center;min-height:120px;align-items:center">暂无成就</div>
+      <button class="ui-btn ui-btn-sm" data-panel="menu" style="margin-top:12px">返回</button>
+    </div>
+
+    <!-- Challenges Panel -->
+    <div class="ui-panel ui-hidden" id="challengesPanel">
+      <div class="ui-title" style="font-size:36px">挑战</div>
+      <div id="challengeList" style="color:rgba(255,255,255,0.6);font-size:14px;text-align:center;min-height:100px;display:flex;align-items:center">暂无挑战</div>
+      <button class="ui-btn ui-btn-sm" data-panel="menu" style="margin-top:12px">返回</button>
+    </div>
+
+    <!-- Settings Panel -->
+    <div class="ui-panel ui-hidden" id="settingsPanel">
+      <div class="ui-title" style="font-size:36px">设置</div>
+      <div style="color:rgba(255,255,255,0.6);font-size:14px;margin:16px 0;text-align:left;line-height:2">
+        <label><input type="checkbox" id="soundToggle" checked> 音效</label><br>
+        <label><input type="checkbox" id="musicToggle" checked> 音乐</label><br>
+        <label><input type="checkbox" id="ghostToggle" checked> 录制回放</label>
+      </div>
+      <button class="ui-btn ui-btn-sm" data-panel="menu" style="margin-top:12px">返回</button>
+    </div>
 </div>
 <script>
 var canvas = document.getElementById('gameCanvas');
@@ -49,6 +151,53 @@ window.addEventListener('resize', function() {
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
 });
+
+var UI = {
+  show: function(id) {
+    document.querySelectorAll('.ui-panel').forEach(function(el) { el.classList.add('ui-hidden'); });
+    var panel = document.getElementById(id);
+    if (panel) panel.classList.remove('ui-hidden');
+  },
+  showHUD: function(show) {
+    document.getElementById('hud').classList.toggle('ui-hidden', !show);
+  },
+  updateScore: function(s) { document.getElementById('scoreDisplay').textContent = s; },
+  updateTimer: function(t) {
+    var el = document.getElementById('timerDisplay');
+    el.textContent = Math.ceil(t) + 's';
+    el.classList.toggle('warning', t <= 3);
+  },
+  updateCombo: function(c) {
+    var el = document.getElementById('comboDisplay');
+    if (c >= 3) { el.textContent = c + 'x combo'; el.classList.remove('ui-hidden'); }
+    else el.classList.add('ui-hidden');
+  },
+  updateFinalScore: function(score, totalPops, maxCombo, gameTime, best) {
+    document.getElementById('finalScore').textContent = '得分: ' + score;
+    var stats = '击中: ' + totalPops + '  最大连击: ' + maxCombo + '  时间: ' + Math.round(gameTime) + 's';
+    document.getElementById('finalStats').textContent = stats;
+    var hasGhost = !!Storage.getGhost(Game.getMode());
+    document.getElementById('replayBtn').style.display = (Game.isDesktop && hasGhost) ? '' : 'none';
+  }
+};
+
+document.getElementById('modeList').addEventListener('click', function(e) {
+  var btn = e.target.closest('[data-mode]');
+  if (btn) { Game.startMode(btn.dataset.mode); }
+});
+document.querySelectorAll('[data-panel]').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    var panel = this.dataset.panel;
+    if (panel === 'menu') { Game.goToMenu(); }
+    else { UI.show(panel + 'Panel'); }
+  });
+});
+document.getElementById('retryBtn').addEventListener('click', function() { Game.restart(); });
+document.getElementById('menuBtn').addEventListener('click', function() { Game.goToMenu(); });
+document.getElementById('pauseBtn').addEventListener('click', function() { Game.togglePause(); });
+document.getElementById('resumeBtn').addEventListener('click', function() { Game.togglePause(); });
+document.getElementById('restartBtn').addEventListener('click', function() { Game.restart(); });
+document.getElementById('quitBtn').addEventListener('click', function() { Game.goToMenu(); });
 
 function animate() {
   requestAnimationFrame(animate);
