@@ -612,7 +612,7 @@ var Game = (function() {
       screenShake = 0.3;
       showFloatingText(W / 2, H / 2, '-30', '#ff4444', 40);
     }
-    if (MODES[gameMode] && MODES[gameMode].recordScore) {
+    if (isDesktop && MODES[gameMode] && MODES[gameMode].recordScore) {
       recordGhostClick(b.x, b.y);
     }
     triggerExplosion(b.mesh, b.type);
@@ -632,11 +632,11 @@ var Game = (function() {
     while (ghostReplayIndex < events.length && events[ghostReplayIndex].t <= ghostReplayTime) {
       var ev = events[ghostReplayIndex];
       var indicator = document.createElement('div');
-      indicator.style.cssText = 'position:absolute;width:16px;height:16px;border-radius:50%;background:rgba(255,200,50,0.6);pointer-events:none;z-index:55;transform:translate(-50%,-50%)';
+      indicator.style.cssText = 'position:absolute;width:20px;height:20px;border-radius:50%;background:rgba(255,255,255,0.5);pointer-events:none;z-index:55;transform:translate(-50%,-50%)';
       indicator.style.left = (ev.x * 100) + '%';
       indicator.style.top = (ev.y * 100) + '%';
       document.getElementById('gameContainer').appendChild(indicator);
-      setTimeout(function() { indicator.remove(); }, 400);
+      setTimeout(function() { indicator.remove(); }, 300);
       ghostReplayIndex++;
     }
     timer = Math.max(0, timerMax - gameTime);
@@ -716,6 +716,7 @@ var Game = (function() {
     startReplay: function() {
       var ghost = window.__lastGhost;
       if (!ghost) return;
+      gameTime = 0;
       ghostReplayData = ghost;
       ghostReplayIndex = 0;
       ghostReplayTime = 0;
