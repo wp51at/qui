@@ -129,16 +129,20 @@ function updateVisibleBounds() {
   camera.updateMatrixWorld();
   var vec = new THREE.Vector3();
   var point = new THREE.Vector3(), dir = new THREE.Vector3();
-  vec.set(-1, 1, 0.5).unproject(camera);
+  vec.set(-1, -1, 0.5).unproject(camera);
   dir.copy(vec).sub(camera.position);
   var t = -camera.position.z / dir.z;
-  var topLeft = point.copy(camera.position).add(dir.multiplyScalar(t));
+  var bl = point.copy(camera.position).add(dir.multiplyScalar(t));
   vec.set(1, -1, 0.5).unproject(camera);
   dir.copy(vec).sub(camera.position);
   t = -camera.position.z / dir.z;
-  var bottomRight = point.copy(camera.position).add(dir.multiplyScalar(t));
-  W = bottomRight.x - topLeft.x;
-  H = bottomRight.y - topLeft.y;
+  var br = point.copy(camera.position).add(dir.multiplyScalar(t));
+  vec.set(-1, 1, 0.5).unproject(camera);
+  dir.copy(vec).sub(camera.position);
+  t = -camera.position.z / dir.z;
+  var tl = point.copy(camera.position).add(dir.multiplyScalar(t));
+  W = br.x - bl.x;
+  H = tl.y - bl.y;
 }
 
 var screenShake = 0;
@@ -925,7 +929,7 @@ var Game = (function() {
       type = 'normal'; value = Math.floor(Math.random() * 9) + 1;
       hue = Math.random() * 360;
     }
-    var baseX = (Math.random() * 0.4 + (Math.random() + Math.random()) / 2 * 0.6) * W;
+    var baseX = Math.random() * W;
     new Balloon(type, value, hue, baseX);
   }
 
