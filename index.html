@@ -139,6 +139,21 @@ var scoreMultiplier = 1;
 var screenShake = 0;
 var explosions = [];
 
+var AudioEngine = (function() {
+  var actx = null;
+  var enabled = false;
+  function init() {
+    if (actx) return;
+    try { actx = new (window.AudioContext || window.webkitAudioContext)(); enabled = false; } catch (e) { actx = null; }
+  }
+  return {
+    init: init,
+    getContext: function() { return actx; },
+    getEnabled: function() { return enabled; },
+    setEnabled: function(v) { enabled = v; }
+  };
+})();
+
 var scene = new THREE.Scene();
 scene.background = new THREE.Color(0x16213e);
 
@@ -150,6 +165,12 @@ var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = false;
+
+renderer.domElement.addEventListener('click', function() {
+  AudioEngine.init();
+  var actx = AudioEngine.getContext();
+  if (actx && actx.state === 'suspended') actx.resume();
+}, { once: true });
 
 var ambient = new THREE.AmbientLight(0x404060, 0.6);
 scene.add(ambient);
@@ -202,7 +223,11 @@ function onBalloonPop(b) {
   b.popped = true;
   totalPops++; combo++;
   if (combo > maxCombo) maxCombo = combo;
-  playPopSound();
+  if (b.type === 'bomb') {
+    playBombSound();
+  } else {
+    playPopSound();
+  }
   if (b.type === 'normal') {
     var added = Math.round(b.value * scoreMultiplier);
     score += added;
@@ -220,7 +245,58 @@ function onBalloonPop(b) {
   UI.updateCombo(combo);
 }
 
-function playPopSound() {}
+function playPopSound() {
+  var actx = AudioEngine.getContext();
+  if (!actx || !AudioEngine.getEnabled()) return;
+
+  var bufferSize = actx.sampleRate * 0.15;
+  var buffer = actx.createBuffer(1, bufferSize, actx.sampleRate);
+  var data = buffer.getChannelData(0);
+  for (var i = 0; i < bufferSize; i++) {
+    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.1));
+  }
+
+  var source = actx.createBufferSource();
+  source.buffer = buffer;
+
+  var filter = actx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(2000, actx.currentTime);
+  filter.frequency.exponentialRampToValueAtTime(400, actx.currentTime + 0.1);
+
+  var gain = actx.createGain();
+  gain.gain.setValueAtTime(0.5, actx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.15);
+
+  source.connect(filter);
+  filter.connect(gain);
+  gain.connect(actx.destination);
+  source.start();
+}
+
+function playBombSound() {
+  var actx = AudioEngine.getContext();
+  if (!actx || !AudioEngine.getEnabled()) return;
+
+  var bufferSize = actx.sampleRate * 0.3;
+  var buffer = actx.createBuffer(1, bufferSize, actx.sampleRate);
+  var data = buffer.getChannelData(0);
+  for (var i = 0; i < bufferSize; i++) {
+    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.15));
+  }
+
+  var source = actx.createBufferSource();
+  source.buffer = buffer;
+  var filter = actx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(800, actx.currentTime);
+  filter.frequency.exponentialRampToValueAtTime(100, actx.currentTime + 0.2);
+  var gain = actx.createGain();
+  gain.gain.setValueAtTime(0.6, actx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.3);
+  source.connect(filter); filter.connect(gain); gain.connect(actx.destination);
+  source.start();
+}
 function showFloatingText(x, y, text, color, size) {
   var el = document.createElement('div');
   el.textContent = text;
