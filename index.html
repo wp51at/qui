@@ -127,20 +127,17 @@ var W, H;
 
 function updateVisibleBounds() {
   camera.updateMatrixWorld();
-  var vec = new THREE.Vector3();
-  var point = new THREE.Vector3(), dir = new THREE.Vector3();
-  vec.set(-1, -1, 0.5).unproject(camera);
-  dir.copy(vec).sub(camera.position);
-  var t = -camera.position.z / dir.z;
-  var bl = point.copy(camera.position).add(dir.multiplyScalar(t));
-  vec.set(1, -1, 0.5).unproject(camera);
-  dir.copy(vec).sub(camera.position);
-  t = -camera.position.z / dir.z;
-  var br = point.copy(camera.position).add(dir.multiplyScalar(t));
-  vec.set(-1, 1, 0.5).unproject(camera);
-  dir.copy(vec).sub(camera.position);
-  t = -camera.position.z / dir.z;
-  var tl = point.copy(camera.position).add(dir.multiplyScalar(t));
+  var vec = new THREE.Vector3(), dir = new THREE.Vector3();
+  var inter = new THREE.Vector3();
+  function intersectZ0(nx, ny) {
+    vec.set(nx, ny, 0.5).unproject(camera);
+    dir.copy(vec).sub(camera.position);
+    var t = -camera.position.z / dir.z;
+    return inter.copy(camera.position).add(dir.multiplyScalar(t)).clone();
+  }
+  var bl = intersectZ0(-1, -1);
+  var br = intersectZ0(1, -1);
+  var tl = intersectZ0(-1, 1);
   W = br.x - bl.x;
   H = tl.y - bl.y;
 }
@@ -638,7 +635,7 @@ function Balloon(type, value, hue, baseX, baseY) {
   this.radius = Math.max(28, this.radius);
   this.active = true;
   this.popped = false;
-  this.vy = (Math.random() - 0.3) * 180;
+  this.vy = 80 + Math.random() * 120;
   this.swayAmp = 15 + Math.random() * 25;
   this.swayFreq = 0.6 + Math.random() * 0.8;
   this.swayPhase = Math.random() * Math.PI * 2;
