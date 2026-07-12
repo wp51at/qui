@@ -628,18 +628,17 @@ function generateBalloonLabel(text, radius) {
   return c;
 }
 
-function Balloon(type, value, hue, baseX) {
+function Balloon(type, value, hue, baseX, baseY) {
   this.type = type;
   this.value = value;
   this.baseX = baseX;
   this.x = baseX;
-  this.y = -60;
+  this.y = baseY !== undefined ? baseY : Math.random() * (H + 160) - 60;
   this.radius = type === 'normal' ? Math.max(28, 40 - value * 2) : (type === 'question' ? 38 : 36);
   this.radius = Math.max(28, this.radius);
   this.active = true;
   this.popped = false;
-  this.vy = 100 + Math.random() * 40;
-  this.accel = 20;
+  this.vy = (Math.random() - 0.3) * 180;
   this.swayAmp = 15 + Math.random() * 25;
   this.swayFreq = 0.6 + Math.random() * 0.8;
   this.swayPhase = Math.random() * Math.PI * 2;
@@ -898,7 +897,6 @@ var Game = (function() {
       var b = mesh.userData.balloon;
       if (!b || !b.active) continue;
 
-      b.vy += b.accel * speedMultiplier * dt;
       b.y += b.vy * dt;
 
       b.x = b.baseX + Math.sin(b.swayPhase + b.swayFreq * b.y * 0.01) * b.swayAmp;
@@ -909,7 +907,7 @@ var Game = (function() {
       mesh.position.x = b.x - W / 2;
       mesh.position.y = b.y - H / 2;
 
-      if (b.y > H + 100) {
+      if (b.y > H + 100 || b.y < -200) {
         scene.remove(mesh);
         balloonMeshes.splice(i, 1);
       }
@@ -930,7 +928,8 @@ var Game = (function() {
       hue = Math.random() * 360;
     }
     var baseX = Math.random() * W;
-    new Balloon(type, value, hue, baseX);
+    var baseY = Math.random() * (H + 160) - 60;
+    new Balloon(type, value, hue, baseX, baseY);
   }
 
   function onBalloonPop(b) {
