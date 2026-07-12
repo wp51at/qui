@@ -26,7 +26,18 @@ var explosions = [];
 var balloonMeshes = [];
 var _geoCache = {};
 var _labelCache = {};
+var _rimCache = {};
 var _specTexture = null;
+var _rayTargets = [];
+
+function _rebuildRayTargets() {
+  _rayTargets.length = 0;
+  for (var i = 0; i < balloonMeshes.length; i++) {
+    balloonMeshes[i].traverse(function(child) {
+      if (child.isMesh && child.geometry.type === 'SphereGeometry') _rayTargets.push(child);
+    });
+  }
+}
 
 var AudioEngine = (function() {
   var actx = null;
@@ -136,11 +147,17 @@ var raycaster = new THREE.Raycaster();
 var mouse = new THREE.Vector2();
 
 var _soundCache = {};
+var _soundKeys = [];
 
 function playSound(spec) {
   var actx = AudioEngine.getContext();
   if (!actx || !AudioEngine.getEnabled()) return;
   if (!_soundCache[spec.key]) {
+    if (_soundKeys.length >= 8) {
+      var oldest = _soundKeys.shift();
+      delete _soundCache[oldest];
+    }
+    _soundKeys.push(spec.key);
     var bufferSize = actx.sampleRate * spec.bufferDuration;
     _soundCache[spec.key] = actx.createBuffer(1, bufferSize, actx.sampleRate);
     var data = _soundCache[spec.key].getChannelData(0);
@@ -227,7 +244,7 @@ function triggerExplosion(mesh, type) {
   var isBomb = type === 'bomb';
 
   for (var i = balloonMeshes.length - 1; i >= 0; i--) {
-    if (balloonMeshes[i] === mesh) { balloonMeshes.splice(i, 1); break; }
+    if (balloonMeshes[i] === mesh) { balloonMeshes.splice(i, 1); _rebuildRayTargets(); break; }
   }
 
   var flashCanvas = document.createElement('canvas');
@@ -326,7 +343,7 @@ function updateExplosions(dt) {
     }
     if (e.flash) {
       e.flashLife -= dt;
-      if (e.flashLife <= 0) { scene.remove(e.flash); e.flash = null; }
+      if (e.flashLife <= 0) { if (e.flash.material.map) e.flash.material.map.dispose(); scene.remove(e.flash); e.flash = null; }
       else e.flash.material.opacity = e.flashLife / 0.1;
     }
     var posArr = e.points.geometry.attributes.position.array;
@@ -421,7 +438,10 @@ function createBalloonMesh(type, value, hue) {
   var innerMesh = new THREE.Mesh(innerGeo, innerMat);
   group.add(innerMesh);
 
-  var rimMap = new THREE.CanvasTexture(generateRimHighlight(hue));
+  var rimKey = Math.round(hue / 30) * 30;
+  var rimCanvas = _rimCache[rimKey];
+  if (!rimCanvas) { rimCanvas = generateRimHighlight(rimKey); _rimCache[rimKey] = rimCanvas; }
+  var rimMap = new THREE.CanvasTexture(rimCanvas);
   var rimMat = new THREE.SpriteMaterial({ map: rimMap, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending });
   var rimSprite = new THREE.Sprite(rimMat);
   rimSprite.position.set(radius * 0.3, radius * 0.3, radius * 0.7);
@@ -552,6 +572,7 @@ class Balloon {
     this.mesh.userData.balloon = this;
     scene.add(this.mesh);
     balloonMeshes.push(this.mesh);
+    _rebuildRayTargets();
   }
 }
 
@@ -690,6 +711,7 @@ var Game = (function() {
   var ghostReplayTime = 0;
   var lastGhost = null;
   var lastBest = 0;
+  var maraMult = { speed: 1, spawn: 1 };
 
   var MAX_BALLOONS = 25;
   var MODES = {
@@ -750,6 +772,7 @@ var Game = (function() {
       scene.remove(balloonMeshes[i]);
     }
     balloonMeshes.length = 0;
+    _rayTargets.length = 0;
     for (var i = explosions.length - 1; i >= 0; i--) {
       if (explosions[i].flash) scene.remove(explosions[i].flash);
       if (explosions[i].points) scene.remove(explosions[i].points);
@@ -783,9 +806,18 @@ var Game = (function() {
     enterState();
   }
 
+  function getMarathonMult() {
+    if (gameMode !== 'marathon') return { speed: 1, spawn: 1 };
+    var t = gameTime;
+    if (t < 10) return { speed: 1.0, spawn: 1.0 };
+    if (t < 20) return { speed: 1.15, spawn: 0.85 };
+    return { speed: 1.3, spawn: 0.7 };
+  }
+
   function updatePlaying(dt) {
     var mode = MODES[gameMode] || MODES.classic;
     gameTime += dt;
+    maraMult = getMarathonMult();
 
     if (mode.hasTimer && timer > 0) {
       timer = Math.max(0, timer - dt);
@@ -813,7 +845,7 @@ var Game = (function() {
     spawnTimer -= dt;
     if (spawnTimer <= 0) {
       spawnBalloon();
-      spawnTimer = (mode.spawnInterval || 1.0) + Math.random() * (mode.spawnVariance || 0.3);
+      spawnTimer = ((mode.spawnInterval || 1.0) + Math.random() * (mode.spawnVariance || 0.3)) * maraMult.spawn;
     }
 
     updateBalloons(dt);
@@ -825,7 +857,7 @@ var Game = (function() {
       var b = mesh.userData.balloon;
       if (!b || !b.active) continue;
 
-      b.y += b.vy * speedMultiplier * dt;
+      b.y += b.vy * speedMultiplier * maraMult.speed * dt;
 
       b.x = b.baseX + Math.sin(b.swayPhase + b.swayFreq * b.y * 0.01) * b.swayAmp;
 
@@ -838,6 +870,7 @@ var Game = (function() {
       if (b.y > H + 100 || b.y < -200) {
         scene.remove(mesh);
         balloonMeshes.splice(i, 1);
+        _rebuildRayTargets();
       }
     }
   }
@@ -918,12 +951,12 @@ var Game = (function() {
 
   function applyQuestionEffect() {
     var effects = [
-      function() { score *= 2; UI.updateScore(score); },
-      function() { score = Math.max(0, Math.floor(score / 2)); UI.updateScore(score); },
-      function() { speedMultiplier *= 1.25; },
-      function() { speedMultiplier *= 0.8; },
-      function() { if (timer > 0) { timer = 0; } },
-      function() { score = 0; UI.updateScore(score); }
+      function() { score *= 2; UI.updateScore(score); showFloatingText(W / 2, H / 2, '+x2!', '#ffa500', 36); },
+      function() { score = Math.max(0, Math.floor(score / 2)); UI.updateScore(score); showFloatingText(W / 2, H / 2, '÷2!', '#6bcbff', 36); },
+      function() { speedMultiplier *= 1.25; showFloatingText(W / 2, H / 2, '⇡ SPEED', '#ffa500', 36); },
+      function() { speedMultiplier *= 0.8; showFloatingText(W / 2, H / 2, '⇣ SLOW', '#32cd32', 36); },
+      function() { if (timer > 0) { timer = 0; showFloatingText(W / 2, H / 2, 'TIME OUT!', '#ff4444', 40); } },
+      function() { score = 0; UI.updateScore(score); showFloatingText(W / 2, H / 2, 'SCORE → 0', '#dc143c', 36); }
     ];
     effects[Math.floor(Math.random() * effects.length)]();
   }
@@ -934,13 +967,7 @@ var Game = (function() {
     mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
-    var meshes = [];
-    balloonMeshes.forEach(function(g) {
-      g.traverse(function(child) {
-        if (child.isMesh && child.geometry.type === 'SphereGeometry') meshes.push(child);
-      });
-    });
-    var intersects = raycaster.intersectObjects(meshes);
+    var intersects = raycaster.intersectObjects(_rayTargets);
     if (intersects.length > 0) {
       var hit = intersects[0].object.parent.userData.balloon;
       if (hit && hit.active && !hit.popped) {
