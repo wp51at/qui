@@ -196,13 +196,13 @@ var bgCanvas = document.createElement('canvas');
 bgCanvas.width = 2; bgCanvas.height = 512;
 var bgCtx = bgCanvas.getContext('2d');
 var grad = bgCtx.createLinearGradient(0, 0, 0, 512);
-grad.addColorStop(0, '#0a0a2e');
-grad.addColorStop(0.35, '#1a1a4e');
-grad.addColorStop(0.5, '#2d1b4e');
-grad.addColorStop(0.65, '#4a1942');
-grad.addColorStop(0.75, '#6b2737');
-grad.addColorStop(0.85, '#2a1a1a');
-grad.addColorStop(1, '#0d0d0d');
+grad.addColorStop(0, '#2a3a6e');
+grad.addColorStop(0.3, '#4a6a9e');
+grad.addColorStop(0.5, '#7a8ac8');
+grad.addColorStop(0.65, '#c8a87e');
+grad.addColorStop(0.78, '#e8c888');
+grad.addColorStop(0.88, '#8a7a5a');
+grad.addColorStop(1, '#3a3a2a');
 bgCtx.fillStyle = grad; bgCtx.fillRect(0, 0, 2, 512);
 scene.background = new THREE.CanvasTexture(bgCanvas);
 
@@ -226,11 +226,11 @@ function initAudio() {
 document.addEventListener('click', initAudio, { once: true });
 document.addEventListener('touchstart', initAudio, { once: true });
 
-var ambient = new THREE.AmbientLight(0x404060, 0.6);
+var ambient = new THREE.AmbientLight(0x8888cc, 0.8);
 scene.add(ambient);
-var hemi = new THREE.HemisphereLight(0x87ceeb, 0x362d59, 0.8);
+var hemi = new THREE.HemisphereLight(0x87ceeb, 0xc8a87e, 1.0);
 scene.add(hemi);
-var point = new THREE.PointLight(0xffeedd, 1.2, 1000);
+var point = new THREE.PointLight(0xffeecc, 1.5, 1000);
 point.position.set(300, 500, 400);
 scene.add(point);
 
@@ -243,7 +243,7 @@ for (var i = 0; i < starCount; i++) {
   starPos[i * 3 + 2] = -500 + Math.random() * -200;
 }
 starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
-var starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.5, transparent: true, opacity: 0.4 });
+var starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.5, transparent: true, opacity: 0.2 });
 var stars = new THREE.Points(starGeo, starMat);
 scene.add(stars);
 
@@ -253,8 +253,8 @@ var groundCanvas = document.createElement('canvas');
 groundCanvas.width = 512; groundCanvas.height = 64;
 var gctx = groundCanvas.getContext('2d');
 var gg = gctx.createLinearGradient(0, 0, 0, 64);
-gg.addColorStop(0, '#3a1a1a'); gg.addColorStop(0.3, '#5a2a2a');
-gg.addColorStop(0.6, '#4a2020'); gg.addColorStop(1, '#1a0a0a');
+gg.addColorStop(0, '#7a5a3a'); gg.addColorStop(0.3, '#9a7a5a');
+gg.addColorStop(0.6, '#8a6a4a'); gg.addColorStop(1, '#5a4a3a');
 gctx.fillStyle = gg; gctx.fillRect(0, 0, 512, 64);
 for (var i = 0; i < 40; i++) {
   gctx.fillStyle = ['#ffdd57','#ff6b6b','#48dbfb','#ff9ff3'][i%4];
@@ -559,8 +559,9 @@ function createBalloonMesh(type, value, hue) {
   var labelMap = new THREE.CanvasTexture(generateLabelCanvas(labelText, type === 'bomb' ? '#ff4444' : type === 'question' ? '#ffdd57' : '#ffffff'));
   var labelMat = new THREE.SpriteMaterial({ map: labelMap, transparent: true, depthTest: false });
   var label = new THREE.Sprite(labelMat);
-  label.position.set(0, radius * 1.4, 0);
-  label.scale.set(radius * 1.0, radius * 0.5, 1);
+  label.position.set(0, radius * 1.6, 0);
+  var labelH = radius * 0.7;
+  label.scale.set(labelH * 2, labelH, 1);
   group.add(label);
 
   var stringGeo = new THREE.CylinderGeometry(0.5, 0.5, 30, 4);
@@ -586,16 +587,16 @@ function generateHighlightCanvas() {
 
 function generateLabelCanvas(text, color) {
   var c = document.createElement('canvas');
-  c.width = 128; c.height = 64;
+  c.width = 160; c.height = 80;
   var ctx = c.getContext('2d');
-  ctx.clearRect(0, 0, 128, 64);
-  ctx.font = 'bold 36px Arial';
+  ctx.clearRect(0, 0, 160, 80);
+  ctx.font = 'bold 52px Arial';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.shadowColor = 'rgba(0,0,0,0.6)';
-  ctx.shadowBlur = 4;
+  ctx.shadowColor = 'rgba(0,0,0,0.7)';
+  ctx.shadowBlur = 6;
   ctx.fillStyle = color;
-  ctx.fillText(text, 64, 33);
+  ctx.fillText(text, 80, 42);
   return c;
 }
 
