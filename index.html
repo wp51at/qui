@@ -458,6 +458,10 @@ var Game = (function() {
   var gameMode = 'classic';
   var isDesktop = !('ontouchstart' in window || navigator.maxTouchPoints > 0);
   var spawnTimer = 0;
+  var ghostRecording = [];
+  var ghostReplayData = null;
+  var ghostReplayIndex = 0;
+  var ghostReplayTime = 0;
 
   var MODES = {
     classic: { duration: 15, spawnInterval: 1.0, spawnVariance: 0.3, baseSpeed: 80, hasBombs: true, hasTimer: true, recordScore: true, name: 'Classic', desc: '15s score attack' },
@@ -475,6 +479,8 @@ var Game = (function() {
         cleanupBalloons();
         break;
       case 'PLAYING':
+        ghostRecording = [];
+        ghostReplayData = null;
         var mode = MODES[gameMode] || MODES.classic;
         timer = mode.duration;
         timerMax = mode.duration;
@@ -489,9 +495,17 @@ var Game = (function() {
         UI.updateCombo(0);
         break;
       case 'GAME_OVER':
+        if (ghostRecording.length > 0) {
+          window.__lastGhost = { events: ghostRecording.slice(), score: score, duration: gameTime };
+          document.getElementById('replayBtn').style.display = '';
+        }
         UI.showHUD(false);
         UI.show('gameOverPanel');
         UI.updateFinalScore(score, totalPops, maxCombo, gameTime, 0);
+        break;
+      case 'REPLAY':
+        UI.showHUD(true);
+        UI.updateTimer(timerMax);
         break;
       case 'PAUSED':
         UI.show('pausePanel');
@@ -598,10 +612,39 @@ var Game = (function() {
       screenShake = 0.3;
       showFloatingText(W / 2, H / 2, '-30', '#ff4444', 40);
     }
+    if (MODES[gameMode] && MODES[gameMode].recordScore) {
+      recordGhostClick(b.x, b.y);
+    }
     triggerExplosion(b.mesh, b.type);
     scoreMultiplier = 1 + Math.floor(combo / 5) * 0.5;
     UI.updateScore(score);
     UI.updateCombo(combo);
+  }
+
+  function recordGhostClick(x, y) {
+    ghostRecording.push({ t: gameTime * 1000, x: x / W, y: y / H });
+  }
+
+  function updateReplay(dt) {
+    gameTime += dt;
+    ghostReplayTime += dt * 1000;
+    var events = ghostReplayData.events;
+    while (ghostReplayIndex < events.length && events[ghostReplayIndex].t <= ghostReplayTime) {
+      var ev = events[ghostReplayIndex];
+      var indicator = document.createElement('div');
+      indicator.style.cssText = 'position:absolute;width:16px;height:16px;border-radius:50%;background:rgba(255,200,50,0.6);pointer-events:none;z-index:55;transform:translate(-50%,-50%)';
+      indicator.style.left = (ev.x * 100) + '%';
+      indicator.style.top = (ev.y * 100) + '%';
+      document.getElementById('gameContainer').appendChild(indicator);
+      setTimeout(function() { indicator.remove(); }, 400);
+      ghostReplayIndex++;
+    }
+    timer = Math.max(0, timerMax - gameTime);
+    UI.updateTimer(timer);
+    if (ghostReplayIndex >= events.length) {
+      state = 'GAME_OVER';
+      enterState();
+    }
   }
 
   function applyQuestionEffect() {
@@ -665,10 +708,23 @@ var Game = (function() {
       updateExplosions(dt);
       switch (state) {
         case 'PLAYING': updatePlaying(dt); break;
+        case 'REPLAY': updateReplay(dt); break;
       }
     },
     handleClick: handleClick,
-    isDesktop: function() { return isDesktop; }
+    isDesktop: function() { return isDesktop; },
+    startReplay: function() {
+      var ghost = window.__lastGhost;
+      if (!ghost) return;
+      ghostReplayData = ghost;
+      ghostReplayIndex = 0;
+      ghostReplayTime = 0;
+      timer = ghost.duration || timerMax;
+      timerMax = timer;
+      score = ghost.score;
+      state = 'REPLAY';
+      enterState();
+    }
   };
 })();
 
@@ -691,6 +747,7 @@ document.querySelectorAll('[data-panel]').forEach(function(btn) {
   });
 });
 document.getElementById('retryBtn').addEventListener('click', function() { Game.restart(); });
+document.getElementById('replayBtn').addEventListener('click', function() { Game.startReplay(); });
 document.getElementById('menuBtn').addEventListener('click', function() { Game.goToMenu(); });
 document.getElementById('pauseBtn').addEventListener('click', function() { Game.togglePause(); });
 document.getElementById('resumeBtn').addEventListener('click', function() { Game.togglePause(); });
