@@ -856,8 +856,7 @@ var Game = (function() {
       hue = Math.random() * 360;
     }
     var baseX = Math.random() * W;
-    var baseY = Math.random() * (H + 160) - 60;
-    new Balloon(type, value, hue, baseX, baseY);
+    new Balloon(type, value, hue, baseX, -(20 + Math.random() * 40));
   }
 
   function onBalloonPop(b) {
