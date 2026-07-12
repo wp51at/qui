@@ -1,3 +1,5 @@
+import * as THREE from 'three';
+
 var canvas = document.getElementById('gameCanvas');
 var W, H;
 var _z0vec = new THREE.Vector3(), _z0dir = new THREE.Vector3();
