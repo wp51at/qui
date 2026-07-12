@@ -530,7 +530,7 @@ var Game = (function() {
     spawnTimer -= dt;
     if (spawnTimer <= 0) {
       spawnBalloon();
-      spawnTimer = (mode.spawnInterval || 1.0) + Math.random() * 0.6;
+      spawnTimer = (mode.spawnInterval || 1.0) + Math.random() * (mode.spawnVariance || 0.3);
     }
 
     updateBalloons(dt);
@@ -542,7 +542,7 @@ var Game = (function() {
       var b = mesh.userData.balloon;
       if (!b || !b.active) continue;
 
-      b.vy += b.accel * dt;
+      b.vy += b.accel * speedMultiplier * dt;
       b.y += b.vy * dt;
 
       b.x = b.lane * LANE_W + LANE_W / 2 + Math.sin(b.swayPhase + b.swayFreq * b.y * 0.01) * b.swayAmp;
@@ -616,7 +616,7 @@ var Game = (function() {
     effects[Math.floor(Math.random() * effects.length)]();
   }
 
-  function handleCanvasClick(clientX, clientY) {
+  function handleClick(clientX, clientY) {
     if (state !== 'PLAYING') return;
     var rect = renderer.domElement.getBoundingClientRect();
     mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
@@ -667,7 +667,8 @@ var Game = (function() {
         case 'PLAYING': updatePlaying(dt); break;
       }
     },
-    isDesktop: isDesktop
+    handleClick: handleClick,
+    isDesktop: function() { return isDesktop; }
   };
 })();
 
