@@ -526,13 +526,13 @@ function Balloon(type, value, hue, lane) {
   this.value = value;
   this.lane = lane;
   this.x = lane * LANE_W + LANE_W / 2;
-  this.y = H + 60;
+  this.y = -60;
   this.radius = type === 'normal' ? Math.max(28, 40 - value * 2) : (type === 'question' ? 38 : 36);
   this.radius = Math.max(28, this.radius);
   this.active = true;
   this.popped = false;
-  this.vy = -(80 + Math.random() * 30);
-  this.accel = -15;
+  this.vy = 80 + Math.random() * 30;
+  this.accel = 15;
   this.swayAmp = 15 + Math.random() * 25;
   this.swayFreq = 0.6 + Math.random() * 0.8;
   this.swayPhase = Math.random() * Math.PI * 2;
@@ -802,7 +802,7 @@ var Game = (function() {
       mesh.position.x = b.x - W / 2;
       mesh.position.y = b.y - H / 2;
 
-      if (b.y < -100) {
+      if (b.y > H + 100) {
         scene.remove(mesh);
         balloonMeshes.splice(i, 1);
       }
