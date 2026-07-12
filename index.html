@@ -633,8 +633,8 @@ function Balloon(type, value, hue, lane) {
   this.radius = Math.max(28, this.radius);
   this.active = true;
   this.popped = false;
-  this.vy = 80 + Math.random() * 30;
-  this.accel = 15;
+  this.vy = 100 + Math.random() * 40;
+  this.accel = 20;
   this.swayAmp = 15 + Math.random() * 25;
   this.swayFreq = 0.6 + Math.random() * 0.8;
   this.swayPhase = Math.random() * Math.PI * 2;
@@ -761,12 +761,12 @@ var Game = (function() {
   var ghostReplayIndex = 0;
   var ghostReplayTime = 0;
 
-  var MAX_BALLOONS = 15;
+  var MAX_BALLOONS = 25;
   var MODES = {
-    classic: { duration: 15, spawnInterval: 0.7, spawnVariance: 0.2, baseSpeed: 80, hasBombs: true, hasTimer: true, recordScore: true, name: 'Classic', desc: '15s score attack' },
-    blitz: { duration: 10, spawnInterval: 0.5, spawnVariance: 0.15, baseSpeed: 100, hasBombs: true, hasTimer: true, recordScore: true, name: 'Blitz', desc: '10s frantic rush' },
-    marathon: { duration: 30, spawnInterval: 0.7, spawnVariance: 0.2, baseSpeed: 80, hasBombs: true, hasTimer: true, recordScore: true, name: 'Marathon', desc: '30s escalating' },
-    zen: { duration: Infinity, spawnInterval: 1.0, spawnVariance: 0.3, baseSpeed: 65, hasBombs: false, hasTimer: false, recordScore: false, name: 'Zen', desc: 'No timer, no bombs' }
+    classic: { duration: 15, spawnInterval: 0.45, spawnVariance: 0.15, baseSpeed: 110, hasBombs: true, hasTimer: true, recordScore: true, name: 'Classic', desc: '15s score attack' },
+    blitz: { duration: 10, spawnInterval: 0.3, spawnVariance: 0.1, baseSpeed: 130, hasBombs: true, hasTimer: true, recordScore: true, name: 'Blitz', desc: '10s frantic rush' },
+    marathon: { duration: 30, spawnInterval: 0.4, spawnVariance: 0.12, baseSpeed: 100, hasBombs: true, hasTimer: true, recordScore: true, name: 'Marathon', desc: '30s escalating' },
+    zen: { duration: Infinity, spawnInterval: 0.6, spawnVariance: 0.2, baseSpeed: 90, hasBombs: false, hasTimer: false, recordScore: false, name: 'Zen', desc: 'No timer, no bombs' }
   };
 
   function enterState() {
