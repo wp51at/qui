@@ -861,6 +861,12 @@ var Game = (function() {
       }
     },
     handleClick: handleClick,
+    handleVisibility: function(hidden) {
+      if (hidden && state === 'PLAYING') {
+        state = 'PAUSED';
+        enterState();
+      }
+    },
     isDesktop: function() { return isDesktop; },
     startReplay: function() {
       var ghost = window.__lastGhost;
@@ -947,6 +953,9 @@ function animate(time) {
   renderer.render(scene, camera);
 }
 animate();
+document.addEventListener('visibilitychange', function() {
+  Game.handleVisibility(document.hidden);
+});
 </script>
 </body>
 </html>
