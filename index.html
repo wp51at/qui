@@ -208,7 +208,7 @@ function initAudio() {
   var actx = AudioEngine.getContext();
   if (actx) {
     if (actx.state === 'suspended') actx.resume();
-    AudioEngine.setEnabled(true);
+    AudioEngine.setEnabled(Storage.getSettings().soundEnabled);
   }
 }
 renderer.domElement.addEventListener('click', initAudio, { once: true });
