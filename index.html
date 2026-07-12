@@ -292,6 +292,259 @@ for (var i = 0; i < 24; i++) {
 }
 scene.add(lightGroup);
 
+// === Playground elements ===
+
+// Ferris wheel
+function createFerrisWheel() {
+  var group = new THREE.Group();
+  var wheelRadius = 80;
+  var spokeMat = new THREE.MeshBasicMaterial({ color: 0xdddddd });
+  var cabinMat = new THREE.MeshBasicMaterial({ color: 0xff4444 });
+
+  // Base legs
+  var legMat = new THREE.MeshBasicMaterial({ color: 0x888888 });
+  for (var s = -1; s <= 1; s += 2) {
+    var leg = new THREE.Mesh(new THREE.CylinderGeometry(3, 4, 60, 6), legMat);
+    leg.position.set(s * 25, 10, 0);
+    leg.rotation.z = s * 0.3;
+    group.add(leg);
+  }
+
+  // Main ring
+  var ring = new THREE.Mesh(new THREE.TorusGeometry(wheelRadius, 3, 8, 32), new THREE.MeshBasicMaterial({ color: 0xff6688 }));
+  ring.position.y = 70;
+  group.add(ring);
+
+  // Inner ring
+  var innerRing = new THREE.Mesh(new THREE.TorusGeometry(wheelRadius * 0.85, 2, 8, 32), new THREE.MeshBasicMaterial({ color: 0xffaa88 }));
+  innerRing.position.y = 70;
+  group.add(innerRing);
+
+  // Spokes
+  var spokeCount = 12;
+  for (var i = 0; i < spokeCount; i++) {
+    var angle = (i / spokeCount) * Math.PI * 2;
+    var spoke = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, wheelRadius * 0.9, 4), spokeMat);
+    spoke.position.y = 70;
+    spoke.position.x = Math.cos(angle) * wheelRadius * 0.45;
+    spoke.position.z = Math.sin(angle) * wheelRadius * 0.45;
+    spoke.rotation.z = -angle + Math.PI / 2;
+    spoke.scale.set(1, 1, 1);
+    group.add(spoke);
+    // Connect spoke to outer ring
+    var connector = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 10, 4), new THREE.MeshBasicMaterial({ color: 0xcccccc }));
+    connector.position.y = 70 + Math.sin(angle) * wheelRadius * 0.9;
+    connector.position.x = Math.cos(angle) * wheelRadius * 0.9;
+    connector.position.z = Math.sin(angle) * wheelRadius * 0.9;
+    group.add(connector);
+
+    // Cabin
+    var cabin = new THREE.Mesh(new THREE.BoxGeometry(12, 14, 10), cabinMat);
+    cabin.position.y = 70 + Math.sin(angle) * (wheelRadius - 5);
+    cabin.position.x = Math.cos(angle) * (wheelRadius - 5);
+    cabin.position.z = Math.sin(angle) * (wheelRadius - 5);
+    cabin.rotation.z = -angle;
+    group.add(cabin);
+    // Cabin window
+    var winMat = new THREE.MeshBasicMaterial({ color: 0x88ccff });
+    var win = new THREE.Mesh(new THREE.BoxGeometry(8, 6, 1), winMat);
+    win.position.set(cabin.position.x, cabin.position.y + 2, cabin.position.z + 5.5);
+    group.add(win);
+  }
+
+  // Center hub
+  var hub = new THREE.Mesh(new THREE.SphereGeometry(8, 12, 12), new THREE.MeshBasicMaterial({ color: 0xffaa44 }));
+  hub.position.y = 70;
+  group.add(hub);
+
+  // Animate rotation
+  group.userData.animate = function(dt) {
+    group.rotation.y += dt * 0.15;
+  };
+
+  return group;
+}
+
+var ferrisWheel = createFerrisWheel();
+ferrisWheel.position.set(-300, -20, -300);
+ferrisWheel.scale.set(0.9, 0.9, 0.9);
+scene.add(ferrisWheel);
+
+// Carnival tent
+function createTent() {
+  var group = new THREE.Group();
+  var stripeColors = [0xff4444, 0xffffff, 0xff4444, 0xffffff, 0xff4444, 0xffffff, 0xff4444, 0xffffff];
+
+  // Roof (cone)
+  var roofMat = new THREE.MeshBasicMaterial({ color: 0xff4444, side: THREE.DoubleSide });
+  var roof = new THREE.Mesh(new THREE.ConeGeometry(80, 50, 8), roofMat);
+  roof.position.y = 40;
+  group.add(roof);
+
+  // Stripes on roof
+  for (var i = 0; i < 8; i++) {
+    var angle = (i / 8) * Math.PI * 2;
+    var stripe = new THREE.Mesh(
+      new THREE.PlaneGeometry(10, 50),
+      new THREE.MeshBasicMaterial({ color: stripeColors[i], side: THREE.DoubleSide })
+    );
+    stripe.position.set(Math.cos(angle) * 40, 20, Math.sin(angle) * 40);
+    stripe.rotation.y = -angle;
+    stripe.rotation.x = 0.35;
+    group.add(stripe);
+  }
+
+  // Pole top
+  var poleTop = new THREE.Mesh(new THREE.SphereGeometry(4, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffdd44 }));
+  poleTop.position.y = 65;
+  group.add(poleTop);
+
+  // Flag
+  var flagMat = new THREE.MeshBasicMaterial({ color: 0xffff00, side: THREE.DoubleSide });
+  var flag = new THREE.Mesh(new THREE.PlaneGeometry(15, 10), flagMat);
+  flag.position.set(10, 70, 0);
+  group.add(flag);
+
+  // Walls
+  var wallMat = new THREE.MeshBasicMaterial({ color: 0xff6644, side: THREE.DoubleSide });
+  for (var i = 0; i < 8; i++) {
+    var angle = (i / 8) * Math.PI * 2;
+    var wall = new THREE.Mesh(
+      new THREE.PlaneGeometry(25, 30),
+      i % 2 === 0 ? wallMat : new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide })
+    );
+    wall.position.set(Math.cos(angle) * 55, -5, Math.sin(angle) * 55);
+    wall.rotation.y = -angle;
+    group.add(wall);
+  }
+
+  return group;
+}
+
+var tent = createTent();
+tent.position.set(280, -20, -280);
+scene.add(tent);
+
+// Flags/bunting line
+function createBunting() {
+  var group = new THREE.Group();
+  var flagColors = [0xff4444, 0x44ff44, 0x4488ff, 0xffff44, 0xff44ff, 0x44ffff];
+  for (var i = 0; i < 16; i++) {
+    var t = i / 15;
+    var x = -200 + t * 400;
+    var y = 100 + Math.sin(t * Math.PI * 4) * 30;
+    var flagMat = new THREE.MeshBasicMaterial({
+      color: flagColors[i % flagColors.length],
+      side: THREE.DoubleSide
+    });
+    var flagMesh = new THREE.Mesh(new THREE.PlaneGeometry(8, 6), flagMat);
+    flagMesh.position.set(x, y, -10);
+    group.add(flagMesh);
+  }
+  return group;
+}
+
+var bunting = createBunting();
+bunting.position.set(0, -20, -350);
+scene.add(bunting);
+
+// Small trees / bushes
+function createTree(x, z, scale) {
+  var group = new THREE.Group();
+  var trunkMat = new THREE.MeshBasicMaterial({ color: 0x8B4513 });
+  var leafMat = new THREE.MeshBasicMaterial({ color: 0x228B22 });
+
+  var trunk = new THREE.Mesh(new THREE.CylinderGeometry(3 * scale, 5 * scale, 30 * scale, 6), trunkMat);
+  trunk.position.y = 15 * scale;
+  group.add(trunk);
+
+  var leaf1 = new THREE.Mesh(new THREE.SphereGeometry(18 * scale, 8, 8), leafMat);
+  leaf1.position.y = 30 * scale;
+  group.add(leaf1);
+
+  var leaf2 = new THREE.Mesh(new THREE.SphereGeometry(14 * scale, 8, 8), new THREE.MeshBasicMaterial({ color: 0x2E8B57 }));
+  leaf2.position.set(10 * scale, 25 * scale, 5 * scale);
+  group.add(leaf2);
+
+  var leaf3 = new THREE.Mesh(new THREE.SphereGeometry(14 * scale, 8, 8), new THREE.MeshBasicMaterial({ color: 0x2E8B57 }));
+  leaf3.position.set(-8 * scale, 28 * scale, -4 * scale);
+  group.add(leaf3);
+
+  group.position.set(x, -20, z);
+  return group;
+}
+
+scene.add(createTree(-200, -320, 1.0));
+scene.add(createTree(-240, -280, 0.8));
+scene.add(createTree(200, -340, 0.9));
+scene.add(createTree(350, -320, 1.1));
+scene.add(createTree(-380, -300, 0.7));
+
+// Ticket booth
+function createTicketBooth() {
+  var group = new THREE.Group();
+  var wallMat = new THREE.MeshBasicMaterial({ color: 0xcc8844 });
+  var roofMat = new THREE.MeshBasicMaterial({ color: 0xdd3333 });
+  var windowMat = new THREE.MeshBasicMaterial({ color: 0x88ccff });
+
+  var body = new THREE.Mesh(new THREE.BoxGeometry(40, 40, 30), wallMat);
+  body.position.y = 20;
+  group.add(body);
+
+  var roof = new THREE.Mesh(new THREE.BoxGeometry(50, 6, 40), roofMat);
+  roof.position.y = 43;
+  group.add(roof);
+
+  var window = new THREE.Mesh(new THREE.BoxGeometry(16, 14, 2), windowMat);
+  window.position.set(0, 25, 15);
+  group.add(window);
+
+  var sign = new THREE.Mesh(new THREE.PlaneGeometry(20, 8), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  sign.position.set(0, 48, 16);
+  group.add(sign);
+
+  return group;
+}
+
+var booth = createTicketBooth();
+booth.position.set(-100, -20, -280);
+booth.rotation.y = 0.2;
+scene.add(booth);
+
+var booth2 = createTicketBooth();
+booth2.position.set(130, -20, -300);
+booth2.rotation.y = -0.15;
+booth2.scale.set(0.7, 0.7, 0.7);
+scene.add(booth2);
+
+// Lampposts
+function createLamppost(x, z) {
+  var group = new THREE.Group();
+  var poleMat = new THREE.MeshBasicMaterial({ color: 0x555555 });
+  var lampMat = new THREE.MeshBasicMaterial({ color: 0xffff88 });
+
+  var pole = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 2, 50, 6), poleMat);
+  pole.position.y = 25;
+  group.add(pole);
+
+  var arm = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 15, 4), poleMat);
+  arm.position.set(7, 45, 0);
+  arm.rotation.z = Math.PI / 2;
+  group.add(arm);
+
+  var lamp = new THREE.Mesh(new THREE.SphereGeometry(5, 8, 8), lampMat);
+  lamp.position.set(15, 45, 0);
+  group.add(lamp);
+
+  group.position.set(x, -20, z);
+  return group;
+}
+
+scene.add(createLamppost(-120, -260));
+scene.add(createLamppost(160, -260));
+scene.add(createLamppost(-260, -240));
+scene.add(createLamppost(300, -240));
+
 // Confetti
 var confettiCount = 100;
 var confettiGeo = new THREE.BufferGeometry();
@@ -1122,6 +1375,7 @@ function animate(time) {
     }
   }
   confetti.geometry.attributes.position.needsUpdate = true;
+  if (ferrisWheel.userData.animate) ferrisWheel.userData.animate(dt);
   if (screenShake > 0) {
     var intensity = screenShake * 15;
     camera.position.x = (Math.random() - 0.5) * intensity;
