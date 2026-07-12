@@ -533,7 +533,7 @@ function createBalloonMesh(type, value, hue) {
   var labelMap = new THREE.CanvasTexture(generateBalloonLabel(labelText, radius));
   var labelMat = new THREE.SpriteMaterial({ map: labelMap, transparent: true, depthTest: false, depthWrite: false });
   var label = new THREE.Sprite(labelMat);
-  label.position.set(0, 0, radius * 1.05);
+  label.position.set(0, 0, 0);
   var labelSize = radius * 1.4;
   label.scale.set(labelSize * 1.3, labelSize, 1);
   group.add(label);
