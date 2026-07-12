@@ -245,15 +245,20 @@ window.addEventListener('resize', function() {
 var raycaster = new THREE.Raycaster();
 var mouse = new THREE.Vector2();
 
+var _popBuffer = null;
+var _bombBuffer = null;
+
 function playPopSound() {
   var actx = AudioEngine.getContext();
   if (!actx || !AudioEngine.getEnabled()) return;
-  var bufferSize = actx.sampleRate * 0.15;
-  var buffer = actx.createBuffer(1, bufferSize, actx.sampleRate);
-  var data = buffer.getChannelData(0);
-  for (var i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.1));
+  if (!_popBuffer) {
+    var bufferSize = actx.sampleRate * 0.15;
+    _popBuffer = actx.createBuffer(1, bufferSize, actx.sampleRate);
+    var data = _popBuffer.getChannelData(0);
+    for (var i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.1));
+  }
   var source = actx.createBufferSource();
-  source.buffer = buffer;
+  source.buffer = _popBuffer;
   var filter = actx.createBiquadFilter();
   filter.type = 'lowpass';
   filter.frequency.setValueAtTime(2000, actx.currentTime);
@@ -268,12 +273,14 @@ function playPopSound() {
 function playBombSound() {
   var actx = AudioEngine.getContext();
   if (!actx || !AudioEngine.getEnabled()) return;
-  var bufferSize = actx.sampleRate * 0.3;
-  var buffer = actx.createBuffer(1, bufferSize, actx.sampleRate);
-  var data = buffer.getChannelData(0);
-  for (var i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.15));
+  if (!_bombBuffer) {
+    var bufferSize = actx.sampleRate * 0.3;
+    _bombBuffer = actx.createBuffer(1, bufferSize, actx.sampleRate);
+    var data = _bombBuffer.getChannelData(0);
+    for (var i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.15));
+  }
   var source = actx.createBufferSource();
-  source.buffer = buffer;
+  source.buffer = _bombBuffer;
   var filter = actx.createBiquadFilter();
   filter.type = 'lowpass';
   filter.frequency.setValueAtTime(800, actx.currentTime);
@@ -285,27 +292,44 @@ function playBombSound() {
   source.start();
 }
 
+var floatingTexts = [];
+
 function showFloatingText(x, y, text, color, size) {
   var el = document.createElement('div');
   el.textContent = text;
-  el.style.position = 'absolute';
-  el.style.left = x + 'px';
-  el.style.top = y + 'px';
-  el.style.color = color;
-  el.style.fontSize = size + 'px';
-  el.style.fontWeight = 'bold';
-  el.style.pointerEvents = 'none';
-  el.style.zIndex = 200;
+  el.style.cssText = 'position:absolute;color:' + color + ';font-size:' + size + 'px;font-weight:bold;pointer-events:none;z-index:60;transform:translate(-50%,-50%)';
+  var rect = renderer.domElement.getBoundingClientRect();
+  el.style.left = (rect.left + (x / W) * rect.width) + 'px';
+  el.style.top = (rect.top + (y / H) * rect.height) + 'px';
   document.getElementById('gameContainer').appendChild(el);
-  var start = performance.now();
-  function frame(t) {
-    var dur = (t - start) / 1000;
-    if (dur > 1) { el.remove(); return; }
-    el.style.top = (y - dur * 60) + 'px';
-    el.style.opacity = 1 - dur;
-    requestAnimationFrame(frame);
+  floatingTexts.push({ el: el, life: 1, vy: -40 });
+}
+
+function updateFloatingTexts(dt) {
+  for (var i = floatingTexts.length - 1; i >= 0; i--) {
+    var ft = floatingTexts[i];
+    ft.life -= dt * 0.5;
+    ft.el.style.top = (parseFloat(ft.el.style.top) + ft.vy * dt) + 'px';
+    ft.el.style.opacity = Math.max(0, ft.life);
+    if (ft.life <= 0) { ft.el.remove(); floatingTexts.splice(i, 1); }
   }
-  requestAnimationFrame(frame);
+}
+
+function playAchievementSound() {
+  var actx = AudioEngine.getContext();
+  if (!actx || !AudioEngine.getEnabled()) return;
+  var osc = actx.createOscillator();
+  var gain = actx.createGain();
+  osc.connect(gain);
+  gain.connect(actx.destination);
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(523, actx.currentTime);
+  osc.frequency.setValueAtTime(659, actx.currentTime + 0.1);
+  osc.frequency.setValueAtTime(784, actx.currentTime + 0.2);
+  gain.gain.setValueAtTime(0.25, actx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.35);
+  osc.start();
+  osc.stop(actx.currentTime + 0.35);
 }
 
 function triggerExplosion(mesh, type) {
@@ -313,7 +337,6 @@ function triggerExplosion(mesh, type) {
   var color = mesh.children[0].material.color.clone();
   var isBomb = type === 'bomb';
 
-  scene.remove(mesh);
   for (var i = balloonMeshes.length - 1; i >= 0; i--) {
     if (balloonMeshes[i] === mesh) { balloonMeshes.splice(i, 1); break; }
   }
@@ -361,7 +384,8 @@ function triggerExplosion(mesh, type) {
   }
 
   explosions.push({
-    flash: flash, flashLife: 0.1, particles: particles, timer: 0, duration: 1.0
+    flash: flash, flashLife: 0.1, particles: particles, timer: 0, duration: 1.0,
+    popMesh: mesh
   });
 }
 
@@ -369,6 +393,25 @@ function updateExplosions(dt) {
   for (var i = explosions.length - 1; i >= 0; i--) {
     var e = explosions[i];
     e.timer += dt;
+    if (e.popMesh) {
+      var t = e.timer / 0.15;
+      if (t < 0.5) {
+        var s = 1 + 0.3 * (t * 2);
+        e.popMesh.scale.set(s, s, s);
+      } else if (t < 1) {
+        var s = 1.3 * (1 - (t - 0.5) * 2);
+        e.popMesh.scale.set(Math.max(0.01, s), Math.max(0.01, s), Math.max(0.01, s));
+        e.popMesh.traverse(function(child) {
+          if (child.material) {
+            child.material.transparent = true;
+            child.material.opacity = 1 - (t - 0.5) * 2;
+          }
+        });
+      } else {
+        scene.remove(e.popMesh);
+        e.popMesh = null;
+      }
+    }
     if (e.flash) {
       e.flashLife -= dt;
       if (e.flashLife <= 0) { scene.remove(e.flash); e.flash = null; }
@@ -491,6 +534,7 @@ var UI = {
   updateScore: function(s) { document.getElementById('scoreDisplay').textContent = s; },
   updateTimer: function(t) {
     var el = document.getElementById('timerDisplay');
+    if (t === Infinity || !isFinite(t)) { el.textContent = '∞'; el.classList.remove('warning'); return; }
     el.textContent = Math.ceil(t) + 's';
     el.classList.toggle('warning', t <= 3);
   },
@@ -621,6 +665,7 @@ var Game = (function() {
         UI.showHUD(true);
         UI.updateScore(0);
         UI.updateTimer(timer);
+        document.getElementById('timerDisplay').style.display = mode.hasTimer ? '' : 'none';
         UI.updateCombo(0);
         break;
       case 'GAME_OVER':
@@ -668,11 +713,11 @@ var Game = (function() {
     if (!stats.bestScores[gameMode] || score > stats.bestScores[gameMode]) stats.bestScores[gameMode] = score;
     if (!stats.modesPlayed) stats.modesPlayed = [];
     if (stats.modesPlayed.indexOf(gameMode) === -1) stats.modesPlayed.push(gameMode);
-    if (totalPops > 0) Storage.unlockAchievement('first_blood');
-    if (score >= 100) Storage.unlockAchievement('century');
-    if (score >= 500) Storage.unlockAchievement('five_hundred');
-    if (maxCombo >= 10) Storage.unlockAchievement('combo10');
-    if ((stats.totalPops || 0) >= 100) Storage.unlockAchievement('pop_100');
+    if (totalPops > 0 && Storage.unlockAchievement('first_blood')) { playAchievementSound(); }
+    if (score >= 100 && Storage.unlockAchievement('century')) { playAchievementSound(); }
+    if (score >= 500 && Storage.unlockAchievement('five_hundred')) { playAchievementSound(); }
+    if (maxCombo >= 10 && Storage.unlockAchievement('combo10')) { playAchievementSound(); }
+    if ((stats.totalPops || 0) >= 100 && Storage.unlockAchievement('pop_100')) { playAchievementSound(); }
     Storage.updateStats(stats);
     var best = stats.bestScores[gameMode] || 0;
     state = 'GAME_OVER';
@@ -687,6 +732,23 @@ var Game = (function() {
     if (mode.hasTimer && timer > 0) {
       timer = Math.max(0, timer - dt);
       UI.updateTimer(timer);
+      if (timer <= 3 && timer > 0 && Math.ceil(timer + dt) !== Math.ceil(timer)) {
+        if (AudioEngine.getEnabled()) {
+          var actx = AudioEngine.getContext();
+          if (actx) {
+            var osc = actx.createOscillator();
+            var gain = actx.createGain();
+            osc.connect(gain);
+            gain.connect(actx.destination);
+            osc.type = 'square';
+            osc.frequency.value = 660;
+            gain.gain.setValueAtTime(0.15, actx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.12);
+            osc.start();
+            osc.stop(actx.currentTime + 0.15);
+          }
+        }
+      }
       if (timer <= 0) { gameOver(); return; }
     }
 
@@ -855,6 +917,7 @@ var Game = (function() {
     getMode: function() { return gameMode; },
     update: function(dt) {
       updateExplosions(dt);
+      updateFloatingTexts(dt);
       switch (state) {
         case 'PLAYING': updatePlaying(dt); break;
         case 'REPLAY': updateReplay(dt); break;
