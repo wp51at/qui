@@ -192,18 +192,11 @@ var Storage = (function() {
 })();
 
 var scene = new THREE.Scene();
-var bgCanvas = document.createElement('canvas');
-bgCanvas.width = 2; bgCanvas.height = 512;
-var bgCtx = bgCanvas.getContext('2d');
-var grad = bgCtx.createLinearGradient(0, 0, 0, 512);
-grad.addColorStop(0, '#07071e');
-grad.addColorStop(0.25, '#0f0f3a');
-grad.addColorStop(0.5, '#16164a');
-grad.addColorStop(0.7, '#1a1a4e');
-grad.addColorStop(0.85, '#0e0e32');
-grad.addColorStop(1, '#08081e');
-bgCtx.fillStyle = grad; bgCtx.fillRect(0, 0, 2, 512);
-scene.background = new THREE.CanvasTexture(bgCanvas);
+var loader = new THREE.TextureLoader();
+loader.crossOrigin = 'anonymous';
+loader.load('https://assets.699pic.com/public/web/images/601/493/108.jpg!seo.v1', function(tex) {
+  scene.background = tex;
+});
 
 var camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 2000);
 camera.position.set(0, 300, 700);
