@@ -134,6 +134,9 @@ var MODES = {
   marathon: { hasBombs: true, spawnInterval: 1.0 },
   zen: { hasBombs: false, spawnInterval: 1.4 }
 };
+var score = 0, combo = 0, maxCombo = 0, totalPops = 0;
+var scoreMultiplier = 1;
+var screenShake = 0;
 
 var scene = new THREE.Scene();
 scene.background = new THREE.Color(0x16213e);
@@ -161,6 +164,86 @@ window.addEventListener('resize', function() {
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
 });
+
+var raycaster = new THREE.Raycaster();
+var mouse = new THREE.Vector2();
+
+function onCanvasClick(clientX, clientY) {
+  var rect = renderer.domElement.getBoundingClientRect();
+  mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  var meshes = [];
+  balloonMeshes.forEach(function(g) {
+    g.traverse(function(child) {
+      if (child.isMesh && child.geometry.type === 'SphereGeometry') meshes.push(child);
+    });
+  });
+  var intersects = raycaster.intersectObjects(meshes);
+  if (intersects.length > 0) {
+    var hit = intersects[0].object.parent.userData.balloon;
+    if (hit && hit.active && !hit.popped) {
+      onBalloonPop(hit);
+    }
+  }
+}
+
+renderer.domElement.addEventListener('click', function(e) { onCanvasClick(e.clientX, e.clientY); });
+renderer.domElement.addEventListener('touchstart', function(e) {
+  e.preventDefault();
+  var t = e.touches[0];
+  onCanvasClick(t.clientX, t.clientY);
+}, { passive: false });
+
+function onBalloonPop(b) {
+  if (!b.active || b.popped) return;
+  b.active = false;
+  b.popped = true;
+  totalPops++; combo++;
+  if (combo > maxCombo) maxCombo = combo;
+  playPopSound();
+  if (b.type === 'normal') {
+    var added = Math.round(b.value * scoreMultiplier);
+    score += added;
+    showFloatingText(b.x, b.y + 40, '+' + added, '#fff', b.value > 7 ? 24 : 18);
+  } else if (b.type === 'question') {
+    applyQuestionEffect();
+  } else if (b.type === 'bomb') {
+    score = Math.max(0, score - 30);
+    screenShake = 0.3;
+    showFloatingText(W / 2, H / 2, '-30', '#ff4444', 40);
+  }
+  triggerExplosion(b.mesh, b.type);
+  scoreMultiplier = 1 + Math.floor(combo / 5) * 0.5;
+  UI.updateScore(score);
+  UI.updateCombo(combo);
+}
+
+function playPopSound() {}
+function showFloatingText(x, y, text, color, size) {
+  var el = document.createElement('div');
+  el.textContent = text;
+  el.style.position = 'absolute';
+  el.style.left = x + 'px';
+  el.style.top = y + 'px';
+  el.style.color = color;
+  el.style.fontSize = size + 'px';
+  el.style.fontWeight = 'bold';
+  el.style.pointerEvents = 'none';
+  el.style.zIndex = 200;
+  document.getElementById('gameContainer').appendChild(el);
+  var start = performance.now();
+  function frame(t) {
+    var dur = (t - start) / 1000;
+    if (dur > 1) { el.remove(); return; }
+    el.style.top = (y - dur * 60) + 'px';
+    el.style.opacity = 1 - dur;
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+function applyQuestionEffect() {}
+function triggerExplosion(mesh, type) {}
 
 var balloonMeshes = [];
 
@@ -357,6 +440,11 @@ function animate(time) {
   var dt = Math.min((time - lastTime) / 1000, 0.05);
   lastTime = time;
   updatePlaying(dt);
+  if (screenShake > 0) {
+    var intensity = screenShake * 15;
+    camera.position.x = (Math.random() - 0.5) * intensity;
+    screenShake = Math.max(0, screenShake - dt * 2);
+  }
   renderer.render(scene, camera);
 }
 animate();
