@@ -211,8 +211,8 @@ function initAudio() {
     AudioEngine.setEnabled(Storage.getSettings().soundEnabled);
   }
 }
-renderer.domElement.addEventListener('click', initAudio, { once: true });
-renderer.domElement.addEventListener('touchstart', initAudio, { once: true });
+document.addEventListener('click', initAudio, { once: true });
+document.addEventListener('touchstart', initAudio, { once: true });
 
 var ambient = new THREE.AmbientLight(0x404060, 0.6);
 scene.add(ambient);
@@ -461,10 +461,10 @@ function createBalloonMesh(type, value, hue) {
 
   var mat = new THREE.MeshStandardMaterial({
     color: color,
-    roughness: type === 'bomb' ? 0.6 : 0.25,
-    metalness: type === 'bomb' ? 0.0 : 0.1,
-    emissive: type === 'bomb' ? new THREE.Color(0x440000) : new THREE.Color(0x000000),
-    emissiveIntensity: 0.3
+    roughness: type === 'bomb' ? 0.5 : 0.08,
+    metalness: type === 'bomb' ? 0.0 : 0.3,
+    emissive: type === 'bomb' ? new THREE.Color(0x440000) : new THREE.Color(color).multiplyScalar(0.15),
+    emissiveIntensity: type === 'bomb' ? 0.3 : 0.1
   });
   var mesh = new THREE.Mesh(geo, mat);
   mesh.castShadow = false;
@@ -476,6 +476,14 @@ function createBalloonMesh(type, value, hue) {
   sprite.position.set(radius * 0.35, radius * 0.35, radius * 0.7);
   sprite.scale.set(radius * 0.5, radius * 0.5, 1);
   group.add(sprite);
+
+  var labelText = type === 'normal' ? '+' + value : (type === 'question' ? '?' : '✕');
+  var labelMap = new THREE.CanvasTexture(generateLabelCanvas(labelText, type === 'bomb' ? '#ff4444' : type === 'question' ? '#ffdd57' : '#ffffff'));
+  var labelMat = new THREE.SpriteMaterial({ map: labelMap, transparent: true, depthTest: false });
+  var label = new THREE.Sprite(labelMat);
+  label.position.set(0, radius * 1.4, 0);
+  label.scale.set(radius * 1.0, radius * 0.5, 1);
+  group.add(label);
 
   var stringGeo = new THREE.CylinderGeometry(0.5, 0.5, 30, 4);
   var stringMat = new THREE.MeshBasicMaterial({ color: 0x888888 });
@@ -495,6 +503,21 @@ function generateHighlightCanvas() {
   g.addColorStop(0.2, 'rgba(255,255,255,0.8)');
   g.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = g; ctx.fillRect(0, 0, 64, 64);
+  return c;
+}
+
+function generateLabelCanvas(text, color) {
+  var c = document.createElement('canvas');
+  c.width = 128; c.height = 64;
+  var ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, 128, 64);
+  ctx.font = 'bold 36px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = 'rgba(0,0,0,0.6)';
+  ctx.shadowBlur = 4;
+  ctx.fillStyle = color;
+  ctx.fillText(text, 64, 33);
   return c;
 }
 
@@ -636,11 +659,12 @@ var Game = (function() {
   var ghostReplayIndex = 0;
   var ghostReplayTime = 0;
 
+  var MAX_BALLOONS = 15;
   var MODES = {
-    classic: { duration: 15, spawnInterval: 1.0, spawnVariance: 0.3, baseSpeed: 80, hasBombs: true, hasTimer: true, recordScore: true, name: 'Classic', desc: '15s score attack' },
-    blitz: { duration: 10, spawnInterval: 0.6, spawnVariance: 0.2, baseSpeed: 100, hasBombs: true, hasTimer: true, recordScore: true, name: 'Blitz', desc: '10s frantic rush' },
-    marathon: { duration: 30, spawnInterval: 1.0, spawnVariance: 0.3, baseSpeed: 80, hasBombs: true, hasTimer: true, recordScore: true, name: 'Marathon', desc: '30s escalating' },
-    zen: { duration: Infinity, spawnInterval: 1.4, spawnVariance: 0.4, baseSpeed: 65, hasBombs: false, hasTimer: false, recordScore: false, name: 'Zen', desc: 'No timer, no bombs' }
+    classic: { duration: 15, spawnInterval: 0.7, spawnVariance: 0.2, baseSpeed: 80, hasBombs: true, hasTimer: true, recordScore: true, name: 'Classic', desc: '15s score attack' },
+    blitz: { duration: 10, spawnInterval: 0.5, spawnVariance: 0.15, baseSpeed: 100, hasBombs: true, hasTimer: true, recordScore: true, name: 'Blitz', desc: '10s frantic rush' },
+    marathon: { duration: 30, spawnInterval: 0.7, spawnVariance: 0.2, baseSpeed: 80, hasBombs: true, hasTimer: true, recordScore: true, name: 'Marathon', desc: '30s escalating' },
+    zen: { duration: Infinity, spawnInterval: 1.0, spawnVariance: 0.3, baseSpeed: 65, hasBombs: false, hasTimer: false, recordScore: false, name: 'Zen', desc: 'No timer, no bombs' }
   };
 
   function enterState() {
@@ -786,6 +810,7 @@ var Game = (function() {
   }
 
   function spawnBalloon() {
+    if (balloonMeshes.length >= MAX_BALLOONS) return;
     var lane = Math.floor(Math.random() * 4);
     var r = Math.random();
     var type, value, hue;
