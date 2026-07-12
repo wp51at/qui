@@ -238,17 +238,7 @@ function makeStars(count, size, opacity, zRange) {
   var mat = new THREE.PointsMaterial({ color: 0xffffff, size: size, transparent: true, opacity: opacity, sizeAttenuation: true });
   return new THREE.Points(geo, mat);
 }
-scene.add(makeStars(200, 1.2, 0.6, 300));
-scene.add(makeStars(150, 2.5, 0.9, 200));
-scene.add(makeStars(80, 0.8, 0.3, 400));
 
-// Simple dark ground
-var groundGeo = new THREE.PlaneGeometry(1600, 200);
-var groundMat = new THREE.MeshBasicMaterial({ color: 0x0a0a1e, transparent: true, opacity: 0.6 });
-var ground = new THREE.Mesh(groundGeo, groundMat);
-ground.rotation.x = -Math.PI / 2;
-ground.position.set(0, -20, -200);
-scene.add(ground);
 
 window.addEventListener('resize', function() {
   var w = window.innerWidth, h = window.innerHeight;
