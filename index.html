@@ -123,8 +123,24 @@ html,body{width:100%;height:100%;overflow:hidden;background:#07071e;font-family:
 </div>
 <script>
 var canvas = document.getElementById('gameCanvas');
-var W = 800, H = 600;
-var LANE_W = W / 4;
+var W, H, LANE_W;
+
+function updateVisibleBounds() {
+  camera.updateMatrixWorld();
+  var vec = new THREE.Vector3();
+  var point = new THREE.Vector3(), dir = new THREE.Vector3();
+  vec.set(-1, 1, 0.5).unproject(camera);
+  dir.copy(vec).sub(camera.position);
+  var t = -camera.position.z / dir.z;
+  var topLeft = point.copy(camera.position).add(dir.multiplyScalar(t));
+  vec.set(1, -1, 0.5).unproject(camera);
+  dir.copy(vec).sub(camera.position);
+  t = -camera.position.z / dir.z;
+  var bottomRight = point.copy(camera.position).add(dir.multiplyScalar(t));
+  W = bottomRight.x - topLeft.x;
+  H = bottomRight.y - topLeft.y;
+  LANE_W = Math.max(1, W / 4);
+}
 
 var screenShake = 0;
 var explosions = [];
@@ -207,6 +223,8 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = false;
 
+updateVisibleBounds();
+
 function initAudio() {
   AudioEngine.init();
   var actx = AudioEngine.getContext();
@@ -245,6 +263,7 @@ window.addEventListener('resize', function() {
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
+  updateVisibleBounds();
 });
 
 var raycaster = new THREE.Raycaster();
