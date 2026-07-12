@@ -176,6 +176,19 @@ var point = new THREE.PointLight(0xffeedd, 1.2, 1000);
 point.position.set(300, 500, 400);
 scene.add(point);
 
+var starGeo = new THREE.BufferGeometry();
+var starCount = 200;
+var starPos = new Float32Array(starCount * 3);
+for (var i = 0; i < starCount; i++) {
+  starPos[i * 3] = (Math.random() - 0.5) * 2000;
+  starPos[i * 3 + 1] = Math.random() * 800;
+  starPos[i * 3 + 2] = -500 + Math.random() * -200;
+}
+starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+var starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.5, transparent: true, opacity: 0.4 });
+var stars = new THREE.Points(starGeo, starMat);
+scene.add(stars);
+
 window.addEventListener('resize', function() {
   var w = window.innerWidth, h = window.innerHeight;
   camera.aspect = w / h;
