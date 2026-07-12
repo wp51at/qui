@@ -145,6 +145,52 @@ var AudioEngine = (function() {
   };
 })();
 
+var Storage = (function() {
+  var KEY = 'balloonAttack';
+  var data = null;
+
+  function load() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      data = raw ? JSON.parse(raw) : null;
+    } catch (e) { data = null; }
+    if (!data) {
+      data = {
+        leaderboard: {},
+        achievements: [],
+        stats: { totalGames: 0, totalPops: 0, bestScores: {}, totalTime: 0, modesPlayed: [], challenges: [] },
+        settings: { soundEnabled: true, musicEnabled: true, ghostEnabled: true }
+      };
+    }
+  }
+
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {}
+  }
+
+  load();
+
+  return {
+    getLeaderboard: function(mode) { return data.leaderboard[mode] || []; },
+    addScore: function(mode, score) {
+      if (!data.leaderboard[mode]) data.leaderboard[mode] = [];
+      data.leaderboard[mode].push({ score: score, date: Date.now() });
+      data.leaderboard[mode].sort(function(a, b) { return b.score - a.score; });
+      if (data.leaderboard[mode].length > 10) data.leaderboard[mode] = data.leaderboard[mode].slice(0, 10);
+      save();
+    },
+    getAchievements: function() { return data.achievements; },
+    unlockAchievement: function(id) {
+      if (data.achievements.indexOf(id) === -1) { data.achievements.push(id); save(); return true; }
+      return false;
+    },
+    getStats: function() { return data.stats; },
+    updateStats: function(s) { for (var k in s) data.stats[k] = s[k]; save(); },
+    getSettings: function() { return data.settings; },
+    updateSettings: function(s) { for (var k in s) data.settings[k] = s[k]; save(); }
+  };
+})();
+
 var scene = new THREE.Scene();
 scene.background = new THREE.Color(0x16213e);
 
@@ -456,10 +502,80 @@ var UI = {
   updateFinalScore: function(score, totalPops, maxCombo, gameTime, best) {
     document.getElementById('finalScore').textContent = '得分: ' + score;
     var stats = '击中: ' + totalPops + '  最大连击: ' + maxCombo + '  时间: ' + Math.round(gameTime) + 's';
+    if (best > 0) stats += '  最佳: ' + best;
     document.getElementById('finalStats').textContent = stats;
     document.getElementById('replayBtn').style.display = 'none';
   }
 };
+
+function renderLeaderboard(mode) {
+  var entries = Storage.getLeaderboard(mode);
+  var html = entries.length ? '' : '<div style="color:rgba(255,255,255,0.3);text-align:center;padding:40px">暂无记录</div>';
+  if (entries.length) {
+    html = '<table style="width:100%;max-width:400px;margin:0 auto;border-collapse:collapse">';
+    entries.forEach(function(e, i) {
+      var d = new Date(e.date);
+      html += '<tr style="border-bottom:1px solid rgba(255,255,255,0.05)">' +
+        '<td style="color:#ffdd57;font-weight:bold;padding:8px;width:40px">#' + (i + 1) + '</td>' +
+        '<td style="text-align:right;font-weight:bold;padding:8px">' + e.score + '</td>' +
+        '<td style="color:rgba(255,255,255,0.3);font-size:12px;text-align:right;padding:8px">' + d.toLocaleDateString() + '</td></tr>';
+    });
+    html += '</table>';
+  }
+  document.getElementById('lbEntries').innerHTML = html;
+}
+
+function renderAchievements() {
+  var ACHIEVEMENTS = [
+    { id: 'first_blood', name: 'First Blood', desc: 'Pop your first balloon' },
+    { id: 'century', name: 'Century', desc: 'Score 100 in one game' },
+    { id: 'five_hundred', name: 'Five Hundred', desc: 'Score 500 in one game' },
+    { id: 'combo10', name: 'Combo King', desc: 'Reach 10 combo' },
+    { id: 'pop_100', name: 'Balloon Hunter', desc: 'Pop 100 balloons total' }
+  ];
+  var unlocked = Storage.getAchievements();
+  var html = '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;max-width:380px;margin:16px auto">';
+  ACHIEVEMENTS.forEach(function(a) {
+    var isUnlocked = unlocked.indexOf(a.id) !== -1;
+    html += '<div style="background:' + (isUnlocked ? 'rgba(255,215,0,0.1)' : 'rgba(255,255,255,0.03)') +
+      ';border:1px solid ' + (isUnlocked ? 'rgba(255,215,0,0.3)' : 'rgba(255,255,255,0.1)') +
+      ';border-radius:6px;padding:8px;text-align:left">' +
+      '<div style="color:' + (isUnlocked ? '#ffdd57' : 'rgba(255,255,255,0.4)') +
+      ';font-size:12px;font-weight:bold">' + (isUnlocked ? '✓ ' : '') + a.name + '</div>' +
+      '<div style="color:' + (isUnlocked ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.25)') +
+      ';font-size:10px">' + a.desc + '</div></div>';
+  });
+  html += '</div>';
+  document.getElementById('achGrid').innerHTML = html;
+}
+
+function renderChallenges() {
+  var CHALLENGES = [
+    { id: 'ch_500', name: 'Point Collector', desc: 'Score 500 points' },
+    { id: 'ch_combo15', name: 'Sharpshooter', desc: 'Reach 15 combo' }
+  ];
+  var completed = Storage.getStats().challenges || [];
+  var html = '<div style="max-width:380px;margin:16px auto">';
+  CHALLENGES.forEach(function(c) {
+    var done = completed.indexOf(c.id) !== -1;
+    html += '<div style="background:' + (done ? 'rgba(0,255,136,0.08)' : 'rgba(255,255,255,0.03)') +
+      ';border:1px solid ' + (done ? 'rgba(0,255,136,0.3)' : 'rgba(255,255,255,0.1)') +
+      ';border-radius:6px;padding:10px;margin-bottom:8px;text-align:left">' +
+      '<div style="color:' + (done ? '#00ff88' : '#fff') + ';font-size:14px;font-weight:bold">' +
+      (done ? '✓ ' : '') + c.name + '</div>' +
+      '<div style="color:' + (done ? 'rgba(0,255,136,0.5)' : 'rgba(255,255,255,0.4)') +
+      ';font-size:12px">' + c.desc + '</div></div>';
+  });
+  html += '</div>';
+  document.getElementById('challengeList').innerHTML = html;
+}
+
+function renderSettings() {
+  var sets = Storage.getSettings();
+  document.getElementById('soundToggle').checked = sets.soundEnabled;
+  document.getElementById('musicToggle').checked = sets.musicEnabled;
+  document.getElementById('ghostToggle').checked = sets.ghostEnabled;
+}
 
 var Game = (function() {
   var state = 'MENU';
@@ -514,7 +630,7 @@ var Game = (function() {
         }
         UI.showHUD(false);
         UI.show('gameOverPanel');
-        UI.updateFinalScore(score, totalPops, maxCombo, gameTime, 0);
+        UI.updateFinalScore(score, totalPops, maxCombo, gameTime, window.__lastBest || 0);
         break;
       case 'REPLAY':
         UI.showHUD(true);
@@ -540,7 +656,27 @@ var Game = (function() {
 
   function gameOver() {
     if (state !== 'PLAYING') return;
+    var mode = MODES[gameMode] || MODES.classic;
+    if (mode.recordScore && score > 0) {
+      Storage.addScore(gameMode, score);
+    }
+    var stats = Storage.getStats();
+    stats.totalGames = (stats.totalGames || 0) + 1;
+    stats.totalPops = (stats.totalPops || 0) + totalPops;
+    stats.totalTime = (stats.totalTime || 0) + Math.round(gameTime);
+    if (!stats.bestScores) stats.bestScores = {};
+    if (!stats.bestScores[gameMode] || score > stats.bestScores[gameMode]) stats.bestScores[gameMode] = score;
+    if (!stats.modesPlayed) stats.modesPlayed = [];
+    if (stats.modesPlayed.indexOf(gameMode) === -1) stats.modesPlayed.push(gameMode);
+    if (totalPops > 0) Storage.unlockAchievement('first_blood');
+    if (score >= 100) Storage.unlockAchievement('century');
+    if (score >= 500) Storage.unlockAchievement('five_hundred');
+    if (maxCombo >= 10) Storage.unlockAchievement('combo10');
+    if ((stats.totalPops || 0) >= 100) Storage.unlockAchievement('pop_100');
+    Storage.updateStats(stats);
+    var best = stats.bestScores[gameMode] || 0;
     state = 'GAME_OVER';
+    window.__lastBest = best;
     enterState();
   }
 
@@ -757,7 +893,13 @@ document.querySelectorAll('[data-panel]').forEach(function(btn) {
   btn.addEventListener('click', function() {
     var panel = this.dataset.panel;
     if (panel === 'menu') { Game.goToMenu(); }
-    else { UI.show(panel + 'Panel'); }
+    else {
+      UI.show(panel + 'Panel');
+      if (panel === 'leaderboard') renderLeaderboard('classic');
+      if (panel === 'achievements') renderAchievements();
+      if (panel === 'challenges') renderChallenges();
+      if (panel === 'settings') renderSettings();
+    }
   });
 });
 document.getElementById('retryBtn').addEventListener('click', function() { Game.restart(); });
@@ -767,6 +909,25 @@ document.getElementById('pauseBtn').addEventListener('click', function() { Game.
 document.getElementById('resumeBtn').addEventListener('click', function() { Game.togglePause(); });
 document.getElementById('restartBtn').addEventListener('click', function() { Game.restart(); });
 document.getElementById('quitBtn').addEventListener('click', function() { Game.goToMenu(); });
+
+document.querySelectorAll('[data-lb-tab]').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    renderLeaderboard(this.dataset.lbTab);
+  });
+});
+
+document.getElementById('soundToggle').addEventListener('change', function() {
+  Storage.updateSettings({ soundEnabled: this.checked });
+  AudioEngine.setEnabled(this.checked);
+});
+
+document.getElementById('musicToggle').addEventListener('change', function() {
+  Storage.updateSettings({ musicEnabled: this.checked });
+});
+
+document.getElementById('ghostToggle').addEventListener('change', function() {
+  Storage.updateSettings({ ghostEnabled: this.checked });
+});
 
 Game.init();
 
