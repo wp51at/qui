@@ -192,7 +192,19 @@ var Storage = (function() {
 })();
 
 var scene = new THREE.Scene();
-scene.background = new THREE.Color(0x16213e);
+var bgCanvas = document.createElement('canvas');
+bgCanvas.width = 2; bgCanvas.height = 512;
+var bgCtx = bgCanvas.getContext('2d');
+var grad = bgCtx.createLinearGradient(0, 0, 0, 512);
+grad.addColorStop(0, '#0a0a2e');
+grad.addColorStop(0.35, '#1a1a4e');
+grad.addColorStop(0.5, '#2d1b4e');
+grad.addColorStop(0.65, '#4a1942');
+grad.addColorStop(0.75, '#6b2737');
+grad.addColorStop(0.85, '#2a1a1a');
+grad.addColorStop(1, '#0d0d0d');
+bgCtx.fillStyle = grad; bgCtx.fillRect(0, 0, 2, 512);
+scene.background = new THREE.CanvasTexture(bgCanvas);
 
 var camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 2000);
 camera.position.set(0, 300, 700);
@@ -234,6 +246,72 @@ starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
 var starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.5, transparent: true, opacity: 0.4 });
 var stars = new THREE.Points(starGeo, starMat);
 scene.add(stars);
+
+// Carnival ground
+var groundGeo = new THREE.PlaneGeometry(1600, 200);
+var groundCanvas = document.createElement('canvas');
+groundCanvas.width = 512; groundCanvas.height = 64;
+var gctx = groundCanvas.getContext('2d');
+var gg = gctx.createLinearGradient(0, 0, 0, 64);
+gg.addColorStop(0, '#3a1a1a'); gg.addColorStop(0.3, '#5a2a2a');
+gg.addColorStop(0.6, '#4a2020'); gg.addColorStop(1, '#1a0a0a');
+gctx.fillStyle = gg; gctx.fillRect(0, 0, 512, 64);
+for (var i = 0; i < 40; i++) {
+  gctx.fillStyle = ['#ffdd57','#ff6b6b','#48dbfb','#ff9ff3'][i%4];
+  gctx.fillRect(i * 13, 20 + Math.random() * 20, 8, 4 + Math.random() * 8);
+}
+var groundMat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(groundCanvas) });
+var ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.set(0, -20, -200);
+scene.add(ground);
+
+// String lights
+var lightColors = [0xff4444, 0x44ff44, 0x4488ff, 0xffff44, 0xff44ff, 0x44ffff];
+var bulbGeo = new THREE.SphereGeometry(5, 8, 8);
+var lightGroup = new THREE.Group();
+for (var i = 0; i < 24; i++) {
+  var t = i / 23;
+  var x = -500 + t * 1000;
+  var y = 320 + Math.sin(t * Math.PI * 3) * 20;
+  var z = -350 - Math.sin(t * Math.PI) * 150;
+  var color = lightColors[i % lightColors.length];
+  var bulbMat = new THREE.MeshBasicMaterial({ color: color });
+  var bulb = new THREE.Mesh(bulbGeo, bulbMat);
+  bulb.position.set(x, y, z);
+  lightGroup.add(bulb);
+  if (i > 0) {
+    var prev = lightGroup.children[i - 1];
+    var pts = [prev.position.clone(), bulb.position.clone()];
+    var curve = new THREE.CatmullRomCurve3(pts);
+    var tubeGeo = new THREE.TubeGeometry(curve, 4, 1, 4, false);
+    var tubeMat = new THREE.MeshBasicMaterial({ color: 0x444444 });
+    var wire = new THREE.Mesh(tubeGeo, tubeMat);
+    lightGroup.add(wire);
+  }
+}
+scene.add(lightGroup);
+
+// Confetti
+var confettiCount = 100;
+var confettiGeo = new THREE.BufferGeometry();
+var confettiPos = new Float32Array(confettiCount * 3);
+var confettiVel = [];
+var confettiColors = new Float32Array(confettiCount * 3);
+for (var i = 0; i < confettiCount; i++) {
+  confettiPos[i*3] = (Math.random() - 0.5) * 1200;
+  confettiPos[i*3+1] = Math.random() * 600;
+  confettiPos[i*3+2] = -600 + Math.random() * -100;
+  confettiColors[i*3] = Math.random();
+  confettiColors[i*3+1] = Math.random();
+  confettiColors[i*3+2] = Math.random();
+  confettiVel.push({ x: (Math.random()-0.5)*30, y: -(20+Math.random()*40), z: (Math.random()-0.5)*20 });
+}
+confettiGeo.setAttribute('position', new THREE.BufferAttribute(confettiPos, 3));
+confettiGeo.setAttribute('color', new THREE.BufferAttribute(confettiColors, 3));
+var confettiMat = new THREE.PointsMaterial({ size: 5, vertexColors: true, transparent: true, opacity: 0.7 });
+var confetti = new THREE.Points(confettiGeo, confettiMat);
+scene.add(confetti);
 
 window.addEventListener('resize', function() {
   var w = window.innerWidth, h = window.innerHeight;
@@ -1031,6 +1109,18 @@ function animate(time) {
   var dt = Math.min((time - lastTime) / 1000, 0.05);
   lastTime = time;
   Game.update(dt);
+  var cp = confetti.geometry.attributes.position.array;
+  for (var i = 0; i < confettiCount; i++) {
+    cp[i*3] += confettiVel[i].x * dt;
+    cp[i*3+1] += confettiVel[i].y * dt;
+    cp[i*3+2] += confettiVel[i].z * dt;
+    if (cp[i*3+1] < -50) {
+      cp[i*3] = (Math.random() - 0.5) * 1200;
+      cp[i*3+1] = 550 + Math.random() * 50;
+      cp[i*3+2] = -600 + Math.random() * -100;
+    }
+  }
+  confetti.geometry.attributes.position.needsUpdate = true;
   if (screenShake > 0) {
     var intensity = screenShake * 15;
     camera.position.x = (Math.random() - 0.5) * intensity;
