@@ -531,11 +531,11 @@ function createBalloonMesh(type, value, hue) {
   // Number label centered on balloon face (white with glass effect)
   var labelText = type === 'normal' ? '' + value : (type === 'question' ? '?' : '✕');
   var labelMap = new THREE.CanvasTexture(generateBalloonLabel(labelText, radius));
-  var labelMat = new THREE.SpriteMaterial({ map: labelMap, transparent: true, depthTest: true, depthWrite: false });
+  var labelMat = new THREE.SpriteMaterial({ map: labelMap, transparent: true, depthTest: false, depthWrite: false });
   var label = new THREE.Sprite(labelMat);
-  label.position.set(0, 0, radius * 0.5);
-  var labelSize = radius * 1.1;
-  label.scale.set(labelSize * 1.2, labelSize, 1);
+  label.position.set(0, 0, radius * 1.05);
+  var labelSize = radius * 1.4;
+  label.scale.set(labelSize * 1.3, labelSize, 1);
   group.add(label);
 
   // Balloon knot / tie
@@ -587,8 +587,8 @@ function generateRimHighlight(hue) {
 }
 
 function generateBalloonLabel(text, radius) {
-  var size = radius * 2.4;
-  size = Math.max(80, Math.min(160, size));
+  var size = radius * 3;
+  size = Math.max(100, Math.min(180, size));
   var c = document.createElement('canvas');
   c.width = size; c.height = size;
   var ctx = c.getContext('2d');
@@ -596,7 +596,7 @@ function generateBalloonLabel(text, radius) {
 
   ctx.clearRect(0, 0, size, size);
 
-  var fontSize = Math.round(size * 0.55);
+  var fontSize = Math.round(size * 0.7);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
