@@ -137,6 +137,7 @@ var MODES = {
 var score = 0, combo = 0, maxCombo = 0, totalPops = 0;
 var scoreMultiplier = 1;
 var screenShake = 0;
+var explosions = [];
 
 var scene = new THREE.Scene();
 scene.background = new THREE.Color(0x16213e);
@@ -243,7 +244,101 @@ function showFloatingText(x, y, text, color, size) {
   requestAnimationFrame(frame);
 }
 function applyQuestionEffect() {}
-function triggerExplosion(mesh, type) {}
+function triggerExplosion(mesh, type) {
+  var pos = mesh.position.clone();
+  var color = mesh.children[0].material.color.clone();
+  var isBomb = type === 'bomb';
+
+  scene.remove(mesh);
+  for (var i = balloonMeshes.length - 1; i >= 0; i--) {
+    if (balloonMeshes[i] === mesh) { balloonMeshes.splice(i, 1); break; }
+  }
+
+  var flashCanvas = document.createElement('canvas');
+  flashCanvas.width = 128; flashCanvas.height = 128;
+  var fctx = flashCanvas.getContext('2d');
+  var grad = fctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  var c = isBomb ? '255,50,50' : '255,255,255';
+  grad.addColorStop(0, 'rgba(' + c + ',1)');
+  grad.addColorStop(0.3, 'rgba(' + c + ',0.6)');
+  grad.addColorStop(1, 'rgba(' + c + ',0)');
+  fctx.fillStyle = grad; fctx.fillRect(0, 0, 128, 128);
+
+  var flashMap = new THREE.CanvasTexture(flashCanvas);
+  var flashMat = new THREE.SpriteMaterial({ map: flashMap, transparent: true, opacity: 1 });
+  var flash = new THREE.Sprite(flashMat);
+  flash.position.copy(pos);
+  flash.scale.set(isBomb ? 200 : 120, isBomb ? 200 : 120, 1);
+  scene.add(flash);
+
+  var pCount = isBomb ? 60 : 35;
+  var particles = [];
+  for (var i = 0; i < pCount; i++) {
+    var theta = Math.random() * Math.PI * 2;
+    var phi = Math.random() * Math.PI;
+    var speed = 80 + Math.random() * 120;
+    var pColor = color.clone();
+    if (isBomb) pColor.lerp(new THREE.Color(0xff0000), Math.random() * 0.5);
+    else pColor.offsetHSL((Math.random() - 0.5) * 0.1, 0, 0);
+
+    var pGeo = new THREE.BoxGeometry(4 + Math.random() * 4, 4 + Math.random() * 4, 4 + Math.random() * 4);
+    var pMat = new THREE.MeshBasicMaterial({ color: pColor, transparent: true, opacity: 1 });
+    var pMesh = new THREE.Mesh(pGeo, pMat);
+    pMesh.position.copy(pos);
+    pMesh.userData = {
+      vx: Math.sin(theta) * Math.cos(phi) * speed,
+      vy: Math.sin(phi) * speed + 50,
+      vz: Math.cos(theta) * Math.cos(phi) * speed,
+      life: 0.5 + Math.random() * 0.5,
+      maxLife: 0.5 + Math.random() * 0.5
+    };
+    scene.add(pMesh);
+    particles.push(pMesh);
+  }
+
+  explosions.push({
+    flash: flash,
+    flashLife: 0.1,
+    particles: particles,
+    timer: 0,
+    duration: 1.0
+  });
+}
+
+function updateExplosions(dt) {
+  for (var i = explosions.length - 1; i >= 0; i--) {
+    var e = explosions[i];
+    e.timer += dt;
+
+    if (e.flash) {
+      e.flashLife -= dt;
+      if (e.flashLife <= 0) { scene.remove(e.flash); e.flash = null; }
+      else e.flash.material.opacity = e.flashLife / 0.1;
+    }
+
+    var allDead = true;
+    for (var j = e.particles.length - 1; j >= 0; j--) {
+      var p = e.particles[j];
+      p.userData.vy -= 300 * dt;
+      p.position.x += p.userData.vx * dt;
+      p.position.y += p.userData.vy * dt;
+      p.position.z += p.userData.vz * dt;
+      p.userData.life -= dt;
+      if (p.userData.life <= 0) {
+        scene.remove(p);
+        e.particles.splice(j, 1);
+      } else {
+        p.material.opacity = p.userData.life / p.userData.maxLife;
+        p.scale.setScalar(p.userData.life / p.userData.maxLife);
+        allDead = false;
+      }
+    }
+
+    if (allDead && !e.flash) {
+      explosions.splice(i, 1);
+    }
+  }
+}
 
 var balloonMeshes = [];
 
@@ -440,6 +535,7 @@ function animate(time) {
   var dt = Math.min((time - lastTime) / 1000, 0.05);
   lastTime = time;
   updatePlaying(dt);
+  updateExplosions(dt);
   if (screenShake > 0) {
     var intensity = screenShake * 15;
     camera.position.x = (Math.random() - 0.5) * intensity;
