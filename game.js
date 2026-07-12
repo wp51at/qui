@@ -24,6 +24,9 @@ function updateVisibleBounds() {
 var screenShake = 0;
 var explosions = [];
 var balloonMeshes = [];
+var _geoCache = {};
+var _labelCache = {};
+var _specTexture = null;
 
 var AudioEngine = (function() {
   var actx = null;
@@ -121,19 +124,6 @@ var point = new THREE.PointLight(0xffeecc, 1.5, 1000);
 point.position.set(300, 500, 400);
 scene.add(point);
 
-function makeStars(count, size, opacity, zRange) {
-  var geo = new THREE.BufferGeometry();
-  var pos = new Float32Array(count * 3);
-  for (var i = 0; i < count; i++) {
-    pos[i*3] = (Math.random() - 0.5) * 2000;
-    pos[i*3+1] = Math.random() * 800 - 50;
-    pos[i*3+2] = -(Math.random() * zRange) - 300;
-  }
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  var mat = new THREE.PointsMaterial({ color: 0xffffff, size: size, transparent: true, opacity: opacity, sizeAttenuation: true });
-  return new THREE.Points(geo, mat);
-}
-
 window.addEventListener('resize', function() {
   var w = window.innerWidth, h = window.innerHeight;
   camera.aspect = w / h;
@@ -178,25 +168,39 @@ function playBombSound() {
 }
 
 var floatingTexts = [];
+var _ftPool = [];
+
+function _allocFTDiv() {
+  return _ftPool.length > 0 ? _ftPool.pop() : document.createElement('div');
+}
+
+function _freeFTDiv(el) {
+  el.remove();
+  el.textContent = '';
+  el.style.cssText = '';
+  _ftPool.push(el);
+}
 
 function showFloatingText(x, y, text, color, size) {
-  var el = document.createElement('div');
+  var el = _allocFTDiv();
   el.textContent = text;
   el.style.cssText = 'position:absolute;color:' + color + ';font-size:' + size + 'px;font-weight:bold;pointer-events:none;z-index:60;transform:translate(-50%,-50%)';
   var rect = renderer.domElement.getBoundingClientRect();
   el.style.left = (rect.left + (x / W) * rect.width) + 'px';
-  el.style.top = (rect.top + (y / H) * rect.height) + 'px';
+  var yPos = (rect.top + (y / H) * rect.height);
+  el.style.top = yPos + 'px';
   document.getElementById('gameContainer').appendChild(el);
-  floatingTexts.push({ el: el, life: 1, vy: -40 });
+  floatingTexts.push({ el: el, life: 1, vy: -40, y: yPos });
 }
 
 function updateFloatingTexts(dt) {
   for (var i = floatingTexts.length - 1; i >= 0; i--) {
     var ft = floatingTexts[i];
     ft.life -= dt * 0.5;
-    ft.el.style.top = (parseFloat(ft.el.style.top) + ft.vy * dt) + 'px';
+    ft.y += ft.vy * dt;
+    ft.el.style.top = ft.y + 'px';
     ft.el.style.opacity = Math.max(0, ft.life);
-    if (ft.life <= 0) { ft.el.remove(); floatingTexts.splice(i, 1); }
+    if (ft.life <= 0) { _freeFTDiv(ft.el); floatingTexts.splice(i, 1); }
   }
 }
 
@@ -244,32 +248,55 @@ function triggerExplosion(mesh, type) {
   scene.add(flash);
 
   var pCount = isBomb ? 60 : 35;
-  var particles = [];
+  var posArr = new Float32Array(pCount * 3);
+  var colArr = new Float32Array(pCount * 3);
+  var sizeArr = new Float32Array(pCount);
+  var vels = new Float32Array(pCount * 3);
+  var lives = new Float32Array(pCount);
+  var maxLives = new Float32Array(pCount);
+
   for (var i = 0; i < pCount; i++) {
     var theta = Math.random() * Math.PI * 2;
     var phi = Math.random() * Math.PI;
     var speed = 80 + Math.random() * 120;
+
+    posArr[i*3] = pos.x;
+    posArr[i*3+1] = pos.y;
+    posArr[i*3+2] = pos.z;
+
+    vels[i*3] = Math.sin(theta) * Math.cos(phi) * speed;
+    vels[i*3+1] = Math.sin(phi) * speed + 50;
+    vels[i*3+2] = Math.cos(theta) * Math.cos(phi) * speed;
+
     var pColor = color.clone();
     if (isBomb) pColor.lerp(new THREE.Color(0xff0000), Math.random() * 0.5);
     else pColor.offsetHSL((Math.random() - 0.5) * 0.1, 0, 0);
+    colArr[i*3] = pColor.r;
+    colArr[i*3+1] = pColor.g;
+    colArr[i*3+2] = pColor.b;
 
-    var pGeo = new THREE.BoxGeometry(4 + Math.random() * 4, 4 + Math.random() * 4, 4 + Math.random() * 4);
-    var pMat = new THREE.MeshBasicMaterial({ color: pColor, transparent: true, opacity: 1 });
-    var pMesh = new THREE.Mesh(pGeo, pMat);
-    pMesh.position.copy(pos);
-    pMesh.userData = {
-      vx: Math.sin(theta) * Math.cos(phi) * speed,
-      vy: Math.sin(phi) * speed + 50,
-      vz: Math.cos(theta) * Math.cos(phi) * speed,
-      life: 0.5 + Math.random() * 0.5,
-      maxLife: 0.5 + Math.random() * 0.5
-    };
-    scene.add(pMesh);
-    particles.push(pMesh);
+    sizeArr[i] = 4 + Math.random() * 4;
+    lives[i] = 0.5 + Math.random() * 0.5;
+    maxLives[i] = 0.5 + Math.random() * 0.5;
   }
 
+  var pGeo = new THREE.BufferGeometry();
+  pGeo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+  pGeo.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
+  pGeo.setAttribute('size', new THREE.BufferAttribute(sizeArr, 1));
+
+  var pMat = new THREE.PointsMaterial({
+    size: 8, transparent: true, opacity: 1,
+    vertexColors: true, sizeAttenuation: true
+  });
+  var points = new THREE.Points(pGeo, pMat);
+  scene.add(points);
+
   explosions.push({
-    flash: flash, flashLife: 0.1, particles: particles, timer: 0, duration: 1.0,
+    flash: flash, flashLife: 0.1,
+    points: points, vels: vels, lives: lives, maxLives: maxLives,
+    pCount: pCount, startSizes: new Float32Array(sizeArr),
+    timer: 0, duration: 1.0,
     popMesh: mesh
   });
 }
@@ -302,24 +329,30 @@ function updateExplosions(dt) {
       if (e.flashLife <= 0) { scene.remove(e.flash); e.flash = null; }
       else e.flash.material.opacity = e.flashLife / 0.1;
     }
-    var allDead = true;
-    for (var j = e.particles.length - 1; j >= 0; j--) {
-      var p = e.particles[j];
-      p.userData.vy -= 300 * dt;
-      p.position.x += p.userData.vx * dt;
-      p.position.y += p.userData.vy * dt;
-      p.position.z += p.userData.vz * dt;
-      p.userData.life -= dt;
-      if (p.userData.life <= 0) {
-        scene.remove(p);
-        e.particles.splice(j, 1);
+    var posArr = e.points.geometry.attributes.position.array;
+    var sizeArr = e.points.geometry.attributes.size.array;
+    var alive = 0, totalLife = 0, totalMax = 0;
+    for (var j = 0; j < e.pCount; j++) {
+      e.lives[j] -= dt;
+      if (e.lives[j] > 0) {
+        e.vels[j*3+1] -= 300 * dt;
+        posArr[j*3] += e.vels[j*3] * dt;
+        posArr[j*3+1] += e.vels[j*3+1] * dt;
+        posArr[j*3+2] += e.vels[j*3+2] * dt;
+        var r = e.lives[j] / e.maxLives[j];
+        sizeArr[j] = e.startSizes[j] * r;
+        totalLife += e.lives[j];
+        totalMax += e.maxLives[j];
+        alive++;
       } else {
-        p.material.opacity = p.userData.life / p.userData.maxLife;
-        p.scale.setScalar(p.userData.life / p.userData.maxLife);
-        allDead = false;
+        sizeArr[j] = 0;
       }
     }
-    if (allDead && !e.flash) {
+    e.points.geometry.attributes.position.needsUpdate = true;
+    e.points.geometry.attributes.size.needsUpdate = true;
+    e.points.material.opacity = alive > 0 ? totalLife / totalMax : 0;
+    if (alive === 0 && !e.flash) {
+      scene.remove(e.points);
       explosions.splice(i, 1);
     }
   }
@@ -339,8 +372,13 @@ function createBalloonMesh(type, value, hue) {
     geo.computeVertexNormals();
   }
 
-  var geo = new THREE.SphereGeometry(radius, 28, 20);
-  stretchSphereY(geo, 1.15);
+  var geoKey = 'outer:' + radius;
+  var geo = _geoCache[geoKey];
+  if (!geo) {
+    geo = new THREE.SphereGeometry(radius, 28, 20);
+    stretchSphereY(geo, 1.15);
+    _geoCache[geoKey] = geo;
+  }
 
   var color;
   if (type === 'normal') {
@@ -365,8 +403,13 @@ function createBalloonMesh(type, value, hue) {
   outerMesh.castShadow = false;
   group.add(outerMesh);
 
-  var innerGeo = new THREE.SphereGeometry(radius * 0.88, 24, 18);
-  stretchSphereY(innerGeo, 1.15);
+  var innerKey = 'inner:' + Math.round(radius * 0.88);
+  var innerGeo = _geoCache[innerKey];
+  if (!innerGeo) {
+    innerGeo = new THREE.SphereGeometry(radius * 0.88, 24, 18);
+    stretchSphereY(innerGeo, 1.15);
+    _geoCache[innerKey] = innerGeo;
+  }
   var innerMat = new THREE.MeshStandardMaterial({
     color: color,
     roughness: 0.3,
@@ -385,15 +428,20 @@ function createBalloonMesh(type, value, hue) {
   rimSprite.scale.set(radius * 1.3, radius * 1.3, 1);
   group.add(rimSprite);
 
-  var specMap = new THREE.CanvasTexture(generateHighlightCanvas());
-  var specMat = new THREE.SpriteMaterial({ map: specMap, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending });
+  if (!_specTexture) _specTexture = new THREE.CanvasTexture(generateHighlightCanvas());
+  var specMat = new THREE.SpriteMaterial({ map: _specTexture, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending });
   var specSprite = new THREE.Sprite(specMat);
   specSprite.position.set(radius * 0.4, radius * 0.45, radius * 0.75);
   specSprite.scale.set(radius * 0.6, radius * 0.6, 1);
   group.add(specSprite);
 
   var labelText = type === 'normal' ? '' + value : (type === 'question' ? '?' : '✕');
-  var labelMap = new THREE.CanvasTexture(generateBalloonLabel(labelText, radius));
+  var labelKey = labelText + ':' + radius;
+  var labelMap = _labelCache[labelKey];
+  if (!labelMap) {
+    labelMap = new THREE.CanvasTexture(generateBalloonLabel(labelText, radius));
+    _labelCache[labelKey] = labelMap;
+  }
   var labelMat = new THREE.SpriteMaterial({ map: labelMap, transparent: true, depthTest: false, depthWrite: false });
   var label = new THREE.Sprite(labelMat);
   label.position.set(0, 0, 0);
@@ -483,26 +531,28 @@ function generateBalloonLabel(text, radius) {
   return c;
 }
 
-function Balloon(type, value, hue, baseX, baseY) {
-  this.type = type;
-  this.value = value;
-  this.baseX = baseX;
-  this.x = baseX;
-  this.y = baseY !== undefined ? baseY : Math.random() * (H + 160) - 60;
-  this.radius = getBalloonRadius(type, value);
-  this.active = true;
-  this.popped = false;
-  this.vy = 80 + Math.random() * 120;
-  this.swayAmp = 15 + Math.random() * 25;
-  this.swayFreq = 0.6 + Math.random() * 0.8;
-  this.swayPhase = Math.random() * Math.PI * 2;
-  this.rotSpeed = (Math.random() - 0.5) * 0.6;
-  var hueVal = hue !== undefined ? hue : Math.random() * 360;
-  this.mesh = createBalloonMesh(type, value, hueVal);
-  this.mesh.position.set(this.x - W / 2, this.y - H / 2, 0);
-  this.mesh.userData.balloon = this;
-  scene.add(this.mesh);
-  balloonMeshes.push(this.mesh);
+class Balloon {
+  constructor(type, value, hue, baseX, baseY) {
+    this.type = type;
+    this.value = value;
+    this.baseX = baseX;
+    this.x = baseX;
+    this.y = baseY !== undefined ? baseY : Math.random() * (H + 160) - 60;
+    this.radius = getBalloonRadius(type, value);
+    this.active = true;
+    this.popped = false;
+    this.vy = 80 + Math.random() * 120;
+    this.swayAmp = 15 + Math.random() * 25;
+    this.swayFreq = 0.6 + Math.random() * 0.8;
+    this.swayPhase = Math.random() * Math.PI * 2;
+    this.rotSpeed = (Math.random() - 0.5) * 0.6;
+    var hueVal = hue !== undefined ? hue : Math.random() * 360;
+    this.mesh = createBalloonMesh(type, value, hueVal);
+    this.mesh.position.set(this.x - W / 2, this.y - H / 2, 0);
+    this.mesh.userData.balloon = this;
+    scene.add(this.mesh);
+    balloonMeshes.push(this.mesh);
+  }
 }
 
 var UI = {
@@ -604,8 +654,29 @@ function renderSettings() {
   document.getElementById('ghostToggle').checked = sets.ghostEnabled;
 }
 
+var _animId = null;
+var _running = false;
+
+function _startLoop() {
+  if (_running) return;
+  _running = true;
+  lastTime = performance.now();
+  _animId = requestAnimationFrame(animate);
+}
+
+function _stopLoop() {
+  _running = false;
+  if (_animId !== null) {
+    cancelAnimationFrame(_animId);
+    _animId = null;
+  }
+}
+
+var lastTime = performance.now();
+
 var Game = (function() {
-  var state = 'MENU';
+  var STATE = { MENU: 'MENU', PLAYING: 'PLAYING', GAME_OVER: 'GAME_OVER', REPLAY: 'REPLAY', PAUSED: 'PAUSED' };
+  var state = STATE.MENU;
   var gameTime = 0;
   var timer = 15, timerMax = 15;
   var score = 0, combo = 0, maxCombo = 0, totalPops = 0;
@@ -630,12 +701,14 @@ var Game = (function() {
 
   function enterState() {
     switch (state) {
-      case 'MENU':
+      case STATE.MENU:
+        _stopLoop();
         UI.show('menuPanel');
         UI.showHUD(false);
         cleanupBalloons();
         break;
-      case 'PLAYING':
+      case STATE.PLAYING:
+        _startLoop();
         ghostRecording = [];
         ghostReplayData = null;
         var mode = MODES[gameMode] || MODES.classic;
@@ -652,7 +725,7 @@ var Game = (function() {
         document.getElementById('timerDisplay').style.display = mode.hasTimer ? '' : 'none';
         UI.updateCombo(0);
         break;
-      case 'GAME_OVER':
+      case STATE.GAME_OVER:
         if (ghostRecording.length > 0) {
           lastGhost = { events: ghostRecording.slice(), score: score, duration: gameTime };
           document.getElementById('replayBtn').style.display = '';
@@ -661,11 +734,12 @@ var Game = (function() {
         UI.show('gameOverPanel');
         UI.updateFinalScore(score, totalPops, maxCombo, gameTime, lastBest);
         break;
-      case 'REPLAY':
+      case STATE.REPLAY:
+        _startLoop();
         UI.showHUD(true);
         UI.updateTimer(timerMax);
         break;
-      case 'PAUSED':
+      case STATE.PAUSED:
         UI.show('pausePanel');
         break;
     }
@@ -678,13 +752,13 @@ var Game = (function() {
     balloonMeshes.length = 0;
     for (var i = explosions.length - 1; i >= 0; i--) {
       if (explosions[i].flash) scene.remove(explosions[i].flash);
-      explosions[i].particles.forEach(function(p) { scene.remove(p); });
+      if (explosions[i].points) scene.remove(explosions[i].points);
     }
     explosions.length = 0;
   }
 
   function gameOver() {
-    if (state !== 'PLAYING') return;
+    if (state !== STATE.PLAYING) return;
     var mode = MODES[gameMode] || MODES.classic;
     if (mode.recordScore && score > 0) {
       Storage.addScore(gameMode, score);
@@ -704,7 +778,7 @@ var Game = (function() {
     if ((stats.totalPops || 0) >= 100 && Storage.unlockAchievement('pop_100')) { playAchievementSound(); }
     Storage.updateStats(stats);
     var best = stats.bestScores[gameMode] || 0;
-    state = 'GAME_OVER';
+    state = STATE.GAME_OVER;
     lastBest = best;
     enterState();
   }
@@ -751,7 +825,7 @@ var Game = (function() {
       var b = mesh.userData.balloon;
       if (!b || !b.active) continue;
 
-      b.y += b.vy * dt;
+      b.y += b.vy * speedMultiplier * dt;
 
       b.x = b.baseX + Math.sin(b.swayPhase + b.swayFreq * b.y * 0.01) * b.swayAmp;
 
@@ -838,7 +912,7 @@ var Game = (function() {
     timer = Math.max(0, timerMax - gameTime);
     UI.updateTimer(timer);
     if (ghostReplayIndex >= events.length) {
-      state = 'GAME_OVER';
+      state = STATE.GAME_OVER;
       enterState();
     }
   }
@@ -856,7 +930,7 @@ var Game = (function() {
   }
 
   function handleClick(clientX, clientY) {
-    if (state !== 'PLAYING') return;
+    if (state !== STATE.PLAYING) return;
     var rect = renderer.domElement.getBoundingClientRect();
     mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
@@ -879,39 +953,39 @@ var Game = (function() {
   return {
     init: function() {
       isDesktop = !('ontouchstart' in window || navigator.maxTouchPoints > 0);
-      state = 'MENU';
+      state = STATE.MENU;
       enterState();
     },
     startMode: function(mode) {
       gameMode = mode;
-      state = 'PLAYING';
+      state = STATE.PLAYING;
       enterState();
     },
     restart: function() {
-      state = 'PLAYING';
+      state = STATE.PLAYING;
       enterState();
     },
     goToMenu: function() {
-      state = 'MENU';
+      state = STATE.MENU;
       enterState();
     },
     togglePause: function() {
-      if (state === 'PLAYING') { state = 'PAUSED'; enterState(); }
-      else if (state === 'PAUSED') { state = 'PLAYING'; enterState(); }
+      if (state === STATE.PLAYING) { state = STATE.PAUSED; enterState(); }
+      else if (state === STATE.PAUSED) { state = STATE.PLAYING; enterState(); }
     },
     getMode: function() { return gameMode; },
     update: function(dt) {
       updateExplosions(dt);
       updateFloatingTexts(dt);
       switch (state) {
-        case 'PLAYING': updatePlaying(dt); break;
-        case 'REPLAY': updateReplay(dt); break;
+        case STATE.PLAYING: updatePlaying(dt); break;
+        case STATE.REPLAY: updateReplay(dt); break;
       }
     },
     handleClick: handleClick,
     handleVisibility: function(hidden) {
-      if (hidden && state === 'PLAYING') {
-        state = 'PAUSED';
+      if (hidden && state === STATE.PLAYING) {
+        state = STATE.PAUSED;
         enterState();
       }
     },
@@ -926,7 +1000,7 @@ var Game = (function() {
       timer = ghost.duration || timerMax;
       timerMax = timer;
       score = ghost.score;
-      state = 'REPLAY';
+      state = STATE.REPLAY;
       enterState();
     }
   };
@@ -985,9 +1059,9 @@ document.getElementById('ghostToggle').addEventListener('change', function() {
 
 Game.init();
 
-var lastTime = performance.now();
 function animate(time) {
-  requestAnimationFrame(animate);
+  if (!_running) return;
+  _animId = requestAnimationFrame(animate);
   var dt = Math.min((time - lastTime) / 1000, 0.05);
   lastTime = time;
   Game.update(dt);
@@ -1000,7 +1074,7 @@ function animate(time) {
   }
   renderer.render(scene, camera);
 }
-animate();
+renderer.render(scene, camera);
 document.addEventListener('visibilitychange', function() {
   Game.handleVisibility(document.hidden);
 });
