@@ -166,11 +166,16 @@ renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = false;
 
-renderer.domElement.addEventListener('click', function() {
+function initAudio() {
   AudioEngine.init();
   var actx = AudioEngine.getContext();
-  if (actx && actx.state === 'suspended') actx.resume();
-}, { once: true });
+  if (actx) {
+    if (actx.state === 'suspended') actx.resume();
+    AudioEngine.setEnabled(true);
+  }
+}
+renderer.domElement.addEventListener('click', initAudio, { once: true });
+renderer.domElement.addEventListener('touchstart', initAudio, { once: true });
 
 var ambient = new THREE.AmbientLight(0x404060, 0.6);
 scene.add(ambient);
