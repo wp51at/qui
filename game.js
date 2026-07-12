@@ -127,13 +127,16 @@ function initAudio() {
 document.addEventListener('click', initAudio, { once: true });
 document.addEventListener('touchstart', initAudio, { once: true });
 
-var ambient = new THREE.AmbientLight(0x8888cc, 0.8);
+var ambient = new THREE.AmbientLight(0xccccff, 0.9);
 scene.add(ambient);
-var hemi = new THREE.HemisphereLight(0x87ceeb, 0xc8a87e, 1.0);
+var hemi = new THREE.HemisphereLight(0xddeeff, 0xc8a87e, 1.2);
 scene.add(hemi);
-var point = new THREE.PointLight(0xffeecc, 1.5, 1000);
-point.position.set(300, 500, 400);
+var point = new THREE.PointLight(0xffffff, 1.8, 1200);
+point.position.set(300, 500, 450);
 scene.add(point);
+var fill = new THREE.PointLight(0x99ccff, 0.7, 900);
+fill.position.set(-200, 300, 200);
+scene.add(fill);
 
 window.addEventListener('resize', function() {
   var w = window.innerWidth, h = window.innerHeight;
@@ -379,6 +382,28 @@ function getBalloonRadius(type, value) {
   return Math.max(28, type === 'normal' ? 40 - value * 2 : (type === 'question' ? 38 : 36));
 }
 
+// 参考图提取的真实气球色板
+var BALLOON_PALETTE = [
+  { h: 19, s: 0.97, l: 0.47 },
+  { h: 31, s: 0.97, l: 0.50 },
+  { h: 52, s: 1.00, l: 0.50 },
+  { h: 102, s: 0.89, l: 0.31 },
+  { h: 129, s: 1.00, l: 0.50 },
+  { h: 189, s: 0.89, l: 0.45 },
+  { h: 210, s: 0.98, l: 0.45 },
+  { h: 246, s: 0.83, l: 0.60 },
+  { h: 261, s: 0.82, l: 0.46 },
+  { h: 288, s: 0.94, l: 0.48 },
+  { h: 317, s: 0.91, l: 0.72 },
+  { h: 337, s: 1.00, l: 0.50 },
+  { h: 356, s: 1.00, l: 0.50 },
+];
+
+function pickBalloonColor() {
+  var c = BALLOON_PALETTE[Math.floor(Math.random() * BALLOON_PALETTE.length)];
+  return new THREE.Color().setHSL(c.h / 360, c.s, c.l);
+}
+
 function createBalloonMesh(type, value, hue) {
   var group = new THREE.Group();
   var radius = getBalloonRadius(type, value);
@@ -392,14 +417,18 @@ function createBalloonMesh(type, value, hue) {
   var geoKey = 'outer:' + radius;
   var geo = _geoCache[geoKey];
   if (!geo) {
-    geo = new THREE.SphereGeometry(radius, 28, 20);
-    stretchSphereY(geo, 1.15);
+    geo = new THREE.SphereGeometry(radius, 32, 24);
+    stretchSphereY(geo, 1.08);
     _geoCache[geoKey] = geo;
   }
 
   var color;
   if (type === 'normal') {
-    color = new THREE.Color().setHSL(hue / 360, 0.85, 0.55);
+    if (hue !== undefined) {
+      color = new THREE.Color().setHSL(hue / 360, 0.85, 0.55);
+    } else {
+      color = pickBalloonColor();
+    }
   } else if (type === 'question') {
     color = new THREE.Color(0xf5c842);
   } else {
@@ -408,13 +437,13 @@ function createBalloonMesh(type, value, hue) {
 
   var glassMat = new THREE.MeshStandardMaterial({
     color: color,
-    roughness: 0.04,
-    metalness: 0.05,
+    roughness: 0.13,
+    metalness: 0.02,
     transparent: true,
-    opacity: 0.75,
-    emissive: new THREE.Color(color).multiplyScalar(0.25),
-    emissiveIntensity: 0.2,
-    envMapIntensity: 0.6
+    opacity: 0.88,
+    emissive: new THREE.Color(color).multiplyScalar(0.18),
+    emissiveIntensity: 0.15,
+    envMapIntensity: 0.5
   });
   var outerMesh = new THREE.Mesh(geo, glassMat);
   outerMesh.castShadow = false;
@@ -424,35 +453,36 @@ function createBalloonMesh(type, value, hue) {
   var innerGeo = _geoCache[innerKey];
   if (!innerGeo) {
     innerGeo = new THREE.SphereGeometry(radius * 0.88, 24, 18);
-    stretchSphereY(innerGeo, 1.15);
+    stretchSphereY(innerGeo, 1.08);
     _geoCache[innerKey] = innerGeo;
   }
   var innerMat = new THREE.MeshStandardMaterial({
     color: color,
-    roughness: 0.3,
+    roughness: 0.25,
     metalness: 0.0,
     transparent: true,
-    opacity: 0.3,
-    emissive: new THREE.Color(color).multiplyScalar(0.1)
+    opacity: 0.25,
+    emissive: new THREE.Color(color).multiplyScalar(0.12)
   });
   var innerMesh = new THREE.Mesh(innerGeo, innerMat);
   group.add(innerMesh);
 
-  var rimKey = Math.round(hue / 30) * 30;
+  var actualHue = hue !== undefined ? Math.round(hue / 30) * 30 : 0;
+  var rimKey = actualHue;
   var rimCanvas = _rimCache[rimKey];
   if (!rimCanvas) { rimCanvas = generateRimHighlight(rimKey); _rimCache[rimKey] = rimCanvas; }
   var rimMap = new THREE.CanvasTexture(rimCanvas);
-  var rimMat = new THREE.SpriteMaterial({ map: rimMap, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending });
+  var rimMat = new THREE.SpriteMaterial({ map: rimMap, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
   var rimSprite = new THREE.Sprite(rimMat);
-  rimSprite.position.set(radius * 0.3, radius * 0.3, radius * 0.7);
-  rimSprite.scale.set(radius * 1.3, radius * 1.3, 1);
+  rimSprite.position.set(radius * 0.25, radius * 0.35, radius * 0.7);
+  rimSprite.scale.set(radius * 1.4, radius * 1.4, 1);
   group.add(rimSprite);
 
   if (!_specTexture) _specTexture = new THREE.CanvasTexture(generateHighlightCanvas());
-  var specMat = new THREE.SpriteMaterial({ map: _specTexture, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending });
+  var specMat = new THREE.SpriteMaterial({ map: _specTexture, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false });
   var specSprite = new THREE.Sprite(specMat);
-  specSprite.position.set(radius * 0.4, radius * 0.45, radius * 0.75);
-  specSprite.scale.set(radius * 0.6, radius * 0.6, 1);
+  specSprite.position.set(radius * 0.35, radius * 0.48, radius * 0.78);
+  specSprite.scale.set(radius * 0.7, radius * 0.7, 1);
   group.add(specSprite);
 
   var labelText = type === 'normal' ? '' + value : (type === 'question' ? '?' : '✕');
@@ -471,13 +501,23 @@ function createBalloonMesh(type, value, hue) {
 
   var knotMat = new THREE.MeshBasicMaterial({ color: 0xaa8866 });
   var knot = new THREE.Mesh(new THREE.ConeGeometry(3, 6, 6), knotMat);
-  knot.position.y = -radius * 1.15 - 3;
+  knot.position.y = -radius * 1.08 - 3;
   group.add(knot);
 
-  var stringGeo = new THREE.CylinderGeometry(0.6, 0.6, 35, 4);
-  var stringMat = new THREE.MeshBasicMaterial({ color: 0x666666 });
-  var string = new THREE.Mesh(stringGeo, stringMat);
-  string.position.y = -radius * 1.15 - 20;
+  // 自然弯曲的绳子（参考图风格）
+  var stringStartY = -radius * 1.08 - 6;
+  var stringLength = 32 + Math.random() * 16;
+  var swayOffset = (Math.random() - 0.5) * 8;
+  var curve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, stringStartY, 0),
+    new THREE.Vector3(swayOffset * 0.3, stringStartY - stringLength * 0.2, 1),
+    new THREE.Vector3(swayOffset * 0.8, stringStartY - stringLength * 0.55, 2),
+    new THREE.Vector3(swayOffset * 0.5, stringStartY - stringLength * 0.8, 1),
+    new THREE.Vector3(swayOffset * 0.15, stringStartY - stringLength, 0)
+  ]);
+  var tubeGeo = new THREE.TubeGeometry(curve, 16, 0.5, 6, false);
+  var stringMat = new THREE.MeshBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.8 });
+  var string = new THREE.Mesh(tubeGeo, stringMat);
   group.add(string);
 
   return group;
@@ -485,33 +525,35 @@ function createBalloonMesh(type, value, hue) {
 
 function generateHighlightCanvas() {
   var c = document.createElement('canvas');
-  c.width = 128; c.height = 128;
+  c.width = 256; c.height = 256;
   var ctx = c.getContext('2d');
-  var g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  var g = ctx.createRadialGradient(128, 100, 4, 128, 128, 128);
   g.addColorStop(0, 'rgba(255,255,255,1)');
-  g.addColorStop(0.15, 'rgba(255,255,255,0.9)');
-  g.addColorStop(0.4, 'rgba(255,255,255,0.3)');
+  g.addColorStop(0.05, 'rgba(255,255,255,0.95)');
+  g.addColorStop(0.18, 'rgba(255,255,255,0.55)');
+  g.addColorStop(0.45, 'rgba(255,255,255,0.12)');
   g.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = g; ctx.fillRect(0, 0, 128, 128);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 256, 256);
   return c;
 }
 
 function generateRimHighlight(hue) {
   var c = document.createElement('canvas');
-  c.width = 128; c.height = 128;
+  c.width = 256; c.height = 256;
   var ctx = c.getContext('2d');
-  var g = ctx.createRadialGradient(128, 0, 0, 64, 64, 64);
-  var col = 'hsla(' + hue + ', 80%, 70%, ';
-  g.addColorStop(0, col + '0.8)');
-  g.addColorStop(0.3, col + '0.4)');
-  g.addColorStop(0.6, col + '0.15)');
+  var col = 'hsla(' + hue + ', 85%, 65%, ';
+  var g = ctx.createRadialGradient(220, 40, 0, 128, 128, 128);
+  g.addColorStop(0, col + '0.85)');
+  g.addColorStop(0.12, col + '0.55)');
+  g.addColorStop(0.3, col + '0.25)');
+  g.addColorStop(0.6, col + '0.06)');
   g.addColorStop(1, col + '0)');
-  ctx.fillStyle = g; ctx.fillRect(0, 0, 128, 128);
-  var g2 = ctx.createRadialGradient(30, 100, 0, 64, 64, 64);
-  g2.addColorStop(0, 'rgba(255,255,255,0.5)');
-  g2.addColorStop(0.5, 'rgba(255,255,255,0.1)');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, 256, 256);
+  var g2 = ctx.createRadialGradient(40, 200, 0, 128, 128, 128);
+  g2.addColorStop(0, 'rgba(255,255,255,0.45)');
+  g2.addColorStop(0.3, 'rgba(255,255,255,0.1)');
   g2.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = g2; ctx.fillRect(0, 0, 128, 128);
+  ctx.fillStyle = g2; ctx.fillRect(0, 0, 256, 256);
   return c;
 }
 
@@ -565,9 +607,7 @@ class Balloon {
     this.swayAmp = 15 + Math.random() * 25;
     this.swayFreq = 0.6 + Math.random() * 0.8;
     this.swayPhase = Math.random() * Math.PI * 2;
-    this.rotSpeed = (Math.random() - 0.5) * 0.6;
-    var hueVal = hue !== undefined ? hue : Math.random() * 360;
-    this.mesh = createBalloonMesh(type, value, hueVal);
+    this.mesh = createBalloonMesh(type, value, hue);
     this.mesh.position.set(this.x - W / 2, this.y - H / 2, 0);
     this.mesh.userData.balloon = this;
     scene.add(this.mesh);
@@ -839,8 +879,8 @@ var Game = (function() {
           }
         }
       }
-      if (timer <= 0) { gameOver(); return; }
     }
+    if (mode.hasTimer && timer <= 0) { gameOver(); return; }
 
     spawnTimer -= dt;
     if (spawnTimer <= 0) {
@@ -861,9 +901,6 @@ var Game = (function() {
 
       b.x = b.baseX + Math.sin(b.swayPhase + b.swayFreq * b.y * 0.01) * b.swayAmp;
 
-      mesh.rotation.y += b.rotSpeed * dt;
-      mesh.rotation.z = Math.sin(b.swayPhase + b.swayFreq * b.y * 0.01) * 0.05;
-
       mesh.position.x = b.x - W / 2;
       mesh.position.y = b.y - H / 2;
 
@@ -878,18 +915,17 @@ var Game = (function() {
   function spawnBalloon() {
     if (balloonMeshes.length >= MAX_BALLOONS) return;
     var r = Math.random();
-    var type, value, hue;
+    var type, value;
     var mode = MODES[gameMode] || MODES.classic;
     if (mode.hasBombs && r < 0.1) {
-      type = 'bomb'; value = 0; hue = 0;
+      type = 'bomb'; value = 0;
     } else if (r < 0.2) {
-      type = 'question'; value = 0; hue = 50;
+      type = 'question'; value = 0;
     } else {
       type = 'normal'; value = Math.floor(Math.random() * 9) + 1;
-      hue = Math.random() * 360;
     }
     var baseX = Math.random() * W;
-    new Balloon(type, value, hue, baseX, -(20 + Math.random() * 40));
+    new Balloon(type, value, undefined, baseX, -(20 + Math.random() * 40));
   }
 
   function onBalloonPop(b) {
@@ -997,7 +1033,12 @@ var Game = (function() {
     },
     togglePause: function() {
       if (state === STATE.PLAYING) { state = STATE.PAUSED; enterState(); }
-      else if (state === STATE.PAUSED) { state = STATE.PLAYING; enterState(); }
+      else if (state === STATE.PAUSED) {
+        state = STATE.PLAYING;
+        document.querySelectorAll('.ui-panel').forEach(function(el) { el.classList.add('ui-hidden'); });
+        UI.showHUD(true);
+        lastTime = performance.now();
+      }
     },
     getMode: function() { return gameMode; },
     update: function(dt) {
