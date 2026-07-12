@@ -123,7 +123,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#07071e;font-family:
 </div>
 <script>
 var canvas = document.getElementById('gameCanvas');
-var W, H, LANE_W;
+var W, H;
 
 function updateVisibleBounds() {
   camera.updateMatrixWorld();
@@ -139,7 +139,6 @@ function updateVisibleBounds() {
   var bottomRight = point.copy(camera.position).add(dir.multiplyScalar(t));
   W = bottomRight.x - topLeft.x;
   H = bottomRight.y - topLeft.y;
-  LANE_W = Math.max(1, W / 4);
 }
 
 var screenShake = 0;
@@ -625,11 +624,11 @@ function generateBalloonLabel(text, radius) {
   return c;
 }
 
-function Balloon(type, value, hue, lane) {
+function Balloon(type, value, hue, baseX) {
   this.type = type;
   this.value = value;
-  this.lane = lane;
-  this.x = lane * LANE_W + LANE_W / 2;
+  this.baseX = baseX;
+  this.x = baseX;
   this.y = -60;
   this.radius = type === 'normal' ? Math.max(28, 40 - value * 2) : (type === 'question' ? 38 : 36);
   this.radius = Math.max(28, this.radius);
@@ -898,7 +897,7 @@ var Game = (function() {
       b.vy += b.accel * speedMultiplier * dt;
       b.y += b.vy * dt;
 
-      b.x = b.lane * LANE_W + LANE_W / 2 + Math.sin(b.swayPhase + b.swayFreq * b.y * 0.01) * b.swayAmp;
+      b.x = b.baseX + Math.sin(b.swayPhase + b.swayFreq * b.y * 0.01) * b.swayAmp;
 
       mesh.rotation.y += b.rotSpeed * dt;
       mesh.rotation.z = Math.sin(b.swayPhase + b.swayFreq * b.y * 0.01) * 0.05;
@@ -915,7 +914,6 @@ var Game = (function() {
 
   function spawnBalloon() {
     if (balloonMeshes.length >= MAX_BALLOONS) return;
-    var lane = Math.floor(Math.random() * 4);
     var r = Math.random();
     var type, value, hue;
     var mode = MODES[gameMode] || MODES.classic;
@@ -927,7 +925,8 @@ var Game = (function() {
       type = 'normal'; value = Math.floor(Math.random() * 9) + 1;
       hue = Math.random() * 360;
     }
-    new Balloon(type, value, hue, lane);
+    var baseX = (Math.random() + Math.random()) / 2 * W;
+    new Balloon(type, value, hue, baseX);
   }
 
   function onBalloonPop(b) {
