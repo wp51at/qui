@@ -126,18 +126,9 @@ var canvas = document.getElementById('gameCanvas');
 var W = 800, H = 600;
 var LANE_W = W / 4;
 
-var gameMode = 'classic';
-var gameTime = 0;
-var MODES = {
-  classic: { hasBombs: true, spawnInterval: 1.0 },
-  blitz: { hasBombs: true, spawnInterval: 0.6 },
-  marathon: { hasBombs: true, spawnInterval: 1.0 },
-  zen: { hasBombs: false, spawnInterval: 1.4 }
-};
-var score = 0, combo = 0, maxCombo = 0, totalPops = 0;
-var scoreMultiplier = 1;
 var screenShake = 0;
 var explosions = [];
+var balloonMeshes = [];
 
 var AudioEngine = (function() {
   var actx = null;
@@ -195,101 +186,33 @@ window.addEventListener('resize', function() {
 var raycaster = new THREE.Raycaster();
 var mouse = new THREE.Vector2();
 
-function onCanvasClick(clientX, clientY) {
-  var rect = renderer.domElement.getBoundingClientRect();
-  mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
-  mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
-  raycaster.setFromCamera(mouse, camera);
-  var meshes = [];
-  balloonMeshes.forEach(function(g) {
-    g.traverse(function(child) {
-      if (child.isMesh && child.geometry.type === 'SphereGeometry') meshes.push(child);
-    });
-  });
-  var intersects = raycaster.intersectObjects(meshes);
-  if (intersects.length > 0) {
-    var hit = intersects[0].object.parent.userData.balloon;
-    if (hit && hit.active && !hit.popped) {
-      onBalloonPop(hit);
-    }
-  }
-}
-
-renderer.domElement.addEventListener('click', function(e) { onCanvasClick(e.clientX, e.clientY); });
-renderer.domElement.addEventListener('touchstart', function(e) {
-  e.preventDefault();
-  var t = e.touches[0];
-  onCanvasClick(t.clientX, t.clientY);
-}, { passive: false });
-
-function onBalloonPop(b) {
-  if (!b.active || b.popped) return;
-  b.active = false;
-  b.popped = true;
-  totalPops++; combo++;
-  if (combo > maxCombo) maxCombo = combo;
-  if (b.type === 'bomb') {
-    playBombSound();
-  } else {
-    playPopSound();
-  }
-  if (b.type === 'normal') {
-    var added = Math.round(b.value * scoreMultiplier);
-    score += added;
-    showFloatingText(b.x, b.y + 40, '+' + added, '#fff', b.value > 7 ? 24 : 18);
-  } else if (b.type === 'question') {
-    applyQuestionEffect();
-  } else if (b.type === 'bomb') {
-    score = Math.max(0, score - 30);
-    screenShake = 0.3;
-    showFloatingText(W / 2, H / 2, '-30', '#ff4444', 40);
-  }
-  triggerExplosion(b.mesh, b.type);
-  scoreMultiplier = 1 + Math.floor(combo / 5) * 0.5;
-  UI.updateScore(score);
-  UI.updateCombo(combo);
-}
-
 function playPopSound() {
   var actx = AudioEngine.getContext();
   if (!actx || !AudioEngine.getEnabled()) return;
-
   var bufferSize = actx.sampleRate * 0.15;
   var buffer = actx.createBuffer(1, bufferSize, actx.sampleRate);
   var data = buffer.getChannelData(0);
-  for (var i = 0; i < bufferSize; i++) {
-    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.1));
-  }
-
+  for (var i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.1));
   var source = actx.createBufferSource();
   source.buffer = buffer;
-
   var filter = actx.createBiquadFilter();
   filter.type = 'lowpass';
   filter.frequency.setValueAtTime(2000, actx.currentTime);
   filter.frequency.exponentialRampToValueAtTime(400, actx.currentTime + 0.1);
-
   var gain = actx.createGain();
   gain.gain.setValueAtTime(0.5, actx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + 0.15);
-
-  source.connect(filter);
-  filter.connect(gain);
-  gain.connect(actx.destination);
+  source.connect(filter); filter.connect(gain); gain.connect(actx.destination);
   source.start();
 }
 
 function playBombSound() {
   var actx = AudioEngine.getContext();
   if (!actx || !AudioEngine.getEnabled()) return;
-
   var bufferSize = actx.sampleRate * 0.3;
   var buffer = actx.createBuffer(1, bufferSize, actx.sampleRate);
   var data = buffer.getChannelData(0);
-  for (var i = 0; i < bufferSize; i++) {
-    data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.15));
-  }
-
+  for (var i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.15));
   var source = actx.createBufferSource();
   source.buffer = buffer;
   var filter = actx.createBiquadFilter();
@@ -302,6 +225,7 @@ function playBombSound() {
   source.connect(filter); filter.connect(gain); gain.connect(actx.destination);
   source.start();
 }
+
 function showFloatingText(x, y, text, color, size) {
   var el = document.createElement('div');
   el.textContent = text;
@@ -324,7 +248,7 @@ function showFloatingText(x, y, text, color, size) {
   }
   requestAnimationFrame(frame);
 }
-function applyQuestionEffect() {}
+
 function triggerExplosion(mesh, type) {
   var pos = mesh.position.clone();
   var color = mesh.children[0].material.color.clone();
@@ -378,11 +302,7 @@ function triggerExplosion(mesh, type) {
   }
 
   explosions.push({
-    flash: flash,
-    flashLife: 0.1,
-    particles: particles,
-    timer: 0,
-    duration: 1.0
+    flash: flash, flashLife: 0.1, particles: particles, timer: 0, duration: 1.0
   });
 }
 
@@ -390,13 +310,11 @@ function updateExplosions(dt) {
   for (var i = explosions.length - 1; i >= 0; i--) {
     var e = explosions[i];
     e.timer += dt;
-
     if (e.flash) {
       e.flashLife -= dt;
       if (e.flashLife <= 0) { scene.remove(e.flash); e.flash = null; }
       else e.flash.material.opacity = e.flashLife / 0.1;
     }
-
     var allDead = true;
     for (var j = e.particles.length - 1; j >= 0; j--) {
       var p = e.particles[j];
@@ -414,14 +332,11 @@ function updateExplosions(dt) {
         allDead = false;
       }
     }
-
     if (allDead && !e.flash) {
       explosions.splice(i, 1);
     }
   }
 }
-
-var balloonMeshes = [];
 
 function createBalloonMesh(type, value, hue) {
   var group = new THREE.Group();
@@ -430,9 +345,7 @@ function createBalloonMesh(type, value, hue) {
 
   var geo = new THREE.SphereGeometry(radius, 24, 18);
   var pos = geo.attributes.position;
-  for (var i = 0; i < pos.count; i++) {
-    pos.setY(i, pos.getY(i) * 1.12);
-  }
+  for (var i = 0; i < pos.count; i++) pos.setY(i, pos.getY(i) * 1.12);
   geo.computeVertexNormals();
 
   var color;
@@ -493,72 +406,18 @@ function Balloon(type, value, hue, lane) {
   this.radius = Math.max(28, this.radius);
   this.active = true;
   this.popped = false;
-
   this.vy = -(80 + Math.random() * 30);
   this.accel = -15;
   this.swayAmp = 15 + Math.random() * 25;
   this.swayFreq = 0.6 + Math.random() * 0.8;
   this.swayPhase = Math.random() * Math.PI * 2;
   this.rotSpeed = (Math.random() - 0.5) * 0.6;
-
   var hueVal = hue !== undefined ? hue : Math.random() * 360;
   this.mesh = createBalloonMesh(type, value, hueVal);
   this.mesh.position.set(this.x - W / 2, this.y - H / 2, 0);
   this.mesh.userData.balloon = this;
   scene.add(this.mesh);
-  balloonMeshes.push(this);
-}
-
-var spawnTimer = 0;
-
-function updateBalloons(dt) {
-  for (var i = balloonMeshes.length - 1; i >= 0; i--) {
-    var b = balloonMeshes[i].userData.balloon;
-    if (!b || !b.active) continue;
-
-    b.vy += b.accel * dt;
-    b.y += b.vy * dt;
-
-    b.x = b.lane * LANE_W + LANE_W / 2 + Math.sin(b.swayPhase + b.swayFreq * b.y * 0.01) * b.swayAmp;
-
-    var mesh = b.mesh;
-    mesh.rotation.y += b.rotSpeed * dt;
-    mesh.rotation.z = Math.sin(b.swayPhase + b.swayFreq * b.y * 0.01) * 0.05;
-
-    mesh.position.x = b.x - W / 2;
-    mesh.position.y = b.y - H / 2;
-
-    if (b.y < -100) {
-      scene.remove(mesh);
-      balloonMeshes.splice(i, 1);
-    }
-  }
-}
-
-function spawnBalloon() {
-  var lane = Math.floor(Math.random() * 4);
-  var r = Math.random();
-  var type, value, hue;
-  var mode = MODES[gameMode] || MODES.classic;
-  if (mode.hasBombs && r < 0.1) {
-    type = 'bomb'; value = 0; hue = 0;
-  } else if (r < 0.2) {
-    type = 'question'; value = 0; hue = 50;
-  } else {
-    type = 'normal'; value = Math.floor(Math.random() * 9) + 1;
-    hue = Math.random() * 360;
-  }
-  new Balloon(type, value, hue, lane);
-}
-
-function updatePlaying(dt) {
-  gameTime += dt;
-  spawnTimer -= dt;
-  if (spawnTimer <= 0) {
-    spawnBalloon();
-    spawnTimer = 1.0 + Math.random() * 0.6;
-  }
-  updateBalloons(dt);
+  balloonMeshes.push(this.mesh);
 }
 
 var UI = {
@@ -585,10 +444,239 @@ var UI = {
     document.getElementById('finalScore').textContent = '得分: ' + score;
     var stats = '击中: ' + totalPops + '  最大连击: ' + maxCombo + '  时间: ' + Math.round(gameTime) + 's';
     document.getElementById('finalStats').textContent = stats;
-    var hasGhost = !!Storage.getGhost(Game.getMode());
-    document.getElementById('replayBtn').style.display = (Game.isDesktop && hasGhost) ? '' : 'none';
+    document.getElementById('replayBtn').style.display = 'none';
   }
 };
+
+var Game = (function() {
+  var state = 'MENU';
+  var stateTime = 0;
+  var gameTime = 0;
+  var timer = 15, timerMax = 15;
+  var score = 0, combo = 0, maxCombo = 0, totalPops = 0;
+  var scoreMultiplier = 1, speedMultiplier = 1;
+  var gameMode = 'classic';
+  var isDesktop = !('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  var spawnTimer = 0;
+
+  var MODES = {
+    classic: { duration: 15, spawnInterval: 1.0, spawnVariance: 0.3, baseSpeed: 80, hasBombs: true, hasTimer: true, recordScore: true, name: 'Classic', desc: '15s score attack' },
+    blitz: { duration: 10, spawnInterval: 0.6, spawnVariance: 0.2, baseSpeed: 100, hasBombs: true, hasTimer: true, recordScore: true, name: 'Blitz', desc: '10s frantic rush' },
+    marathon: { duration: 30, spawnInterval: 1.0, spawnVariance: 0.3, baseSpeed: 80, hasBombs: true, hasTimer: true, recordScore: true, name: 'Marathon', desc: '30s escalating' },
+    zen: { duration: Infinity, spawnInterval: 1.4, spawnVariance: 0.4, baseSpeed: 65, hasBombs: false, hasTimer: false, recordScore: false, name: 'Zen', desc: 'No timer, no bombs' }
+  };
+
+  function enterState() {
+    stateTime = 0;
+    switch (state) {
+      case 'MENU':
+        UI.show('menuPanel');
+        UI.showHUD(false);
+        cleanupBalloons();
+        break;
+      case 'PLAYING':
+        var mode = MODES[gameMode] || MODES.classic;
+        timer = mode.duration;
+        timerMax = mode.duration;
+        score = 0; combo = 0; maxCombo = 0; totalPops = 0;
+        scoreMultiplier = 1; speedMultiplier = 1;
+        spawnTimer = 0; gameTime = 0;
+        cleanupBalloons();
+        document.querySelectorAll('.ui-panel').forEach(function(el) { el.classList.add('ui-hidden'); });
+        UI.showHUD(true);
+        UI.updateScore(0);
+        UI.updateTimer(timer);
+        UI.updateCombo(0);
+        break;
+      case 'GAME_OVER':
+        UI.showHUD(false);
+        UI.show('gameOverPanel');
+        UI.updateFinalScore(score, totalPops, maxCombo, gameTime, 0);
+        break;
+      case 'PAUSED':
+        UI.show('pausePanel');
+        break;
+    }
+  }
+
+  function cleanupBalloons() {
+    for (var i = balloonMeshes.length - 1; i >= 0; i--) {
+      scene.remove(balloonMeshes[i]);
+    }
+    balloonMeshes.length = 0;
+    for (var i = explosions.length - 1; i >= 0; i--) {
+      if (explosions[i].flash) scene.remove(explosions[i].flash);
+      explosions[i].particles.forEach(function(p) { scene.remove(p); });
+    }
+    explosions.length = 0;
+  }
+
+  function gameOver() {
+    if (state !== 'PLAYING') return;
+    state = 'GAME_OVER';
+    enterState();
+  }
+
+  function updatePlaying(dt) {
+    var mode = MODES[gameMode] || MODES.classic;
+    gameTime += dt;
+
+    if (mode.hasTimer && timer > 0) {
+      timer = Math.max(0, timer - dt);
+      UI.updateTimer(timer);
+      if (timer <= 0) { gameOver(); return; }
+    }
+
+    spawnTimer -= dt;
+    if (spawnTimer <= 0) {
+      spawnBalloon();
+      spawnTimer = (mode.spawnInterval || 1.0) + Math.random() * 0.6;
+    }
+
+    updateBalloons(dt);
+  }
+
+  function updateBalloons(dt) {
+    for (var i = balloonMeshes.length - 1; i >= 0; i--) {
+      var mesh = balloonMeshes[i];
+      var b = mesh.userData.balloon;
+      if (!b || !b.active) continue;
+
+      b.vy += b.accel * dt;
+      b.y += b.vy * dt;
+
+      b.x = b.lane * LANE_W + LANE_W / 2 + Math.sin(b.swayPhase + b.swayFreq * b.y * 0.01) * b.swayAmp;
+
+      mesh.rotation.y += b.rotSpeed * dt;
+      mesh.rotation.z = Math.sin(b.swayPhase + b.swayFreq * b.y * 0.01) * 0.05;
+
+      mesh.position.x = b.x - W / 2;
+      mesh.position.y = b.y - H / 2;
+
+      if (b.y < -100) {
+        scene.remove(mesh);
+        balloonMeshes.splice(i, 1);
+      }
+    }
+  }
+
+  function spawnBalloon() {
+    var lane = Math.floor(Math.random() * 4);
+    var r = Math.random();
+    var type, value, hue;
+    var mode = MODES[gameMode] || MODES.classic;
+    if (mode.hasBombs && r < 0.1) {
+      type = 'bomb'; value = 0; hue = 0;
+    } else if (r < 0.2) {
+      type = 'question'; value = 0; hue = 50;
+    } else {
+      type = 'normal'; value = Math.floor(Math.random() * 9) + 1;
+      hue = Math.random() * 360;
+    }
+    new Balloon(type, value, hue, lane);
+  }
+
+  function onBalloonPop(b) {
+    if (!b.active || b.popped) return;
+    b.active = false;
+    b.popped = true;
+    totalPops++; combo++;
+    if (combo > maxCombo) maxCombo = combo;
+    if (b.type === 'bomb') {
+      playBombSound();
+    } else {
+      playPopSound();
+    }
+    if (b.type === 'normal') {
+      var added = Math.round(b.value * scoreMultiplier);
+      score += added;
+      showFloatingText(b.x, b.y + 40, '+' + added, '#fff', b.value > 7 ? 24 : 18);
+    } else if (b.type === 'question') {
+      applyQuestionEffect();
+    } else if (b.type === 'bomb') {
+      score = Math.max(0, score - 30);
+      screenShake = 0.3;
+      showFloatingText(W / 2, H / 2, '-30', '#ff4444', 40);
+    }
+    triggerExplosion(b.mesh, b.type);
+    scoreMultiplier = 1 + Math.floor(combo / 5) * 0.5;
+    UI.updateScore(score);
+    UI.updateCombo(combo);
+  }
+
+  function applyQuestionEffect() {
+    var effects = [
+      function() { score *= 2; UI.updateScore(score); },
+      function() { score = Math.max(0, Math.floor(score / 2)); UI.updateScore(score); },
+      function() { speedMultiplier *= 1.25; },
+      function() { speedMultiplier *= 0.8; },
+      function() { if (timer > 0) { timer = 0; } },
+      function() { score = 0; UI.updateScore(score); }
+    ];
+    effects[Math.floor(Math.random() * effects.length)]();
+  }
+
+  function handleCanvasClick(clientX, clientY) {
+    if (state !== 'PLAYING') return;
+    var rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    var meshes = [];
+    balloonMeshes.forEach(function(g) {
+      g.traverse(function(child) {
+        if (child.isMesh && child.geometry.type === 'SphereGeometry') meshes.push(child);
+      });
+    });
+    var intersects = raycaster.intersectObjects(meshes);
+    if (intersects.length > 0) {
+      var hit = intersects[0].object.parent.userData.balloon;
+      if (hit && hit.active && !hit.popped) {
+        onBalloonPop(hit);
+      }
+    }
+  }
+
+  return {
+    init: function() {
+      isDesktop = !('ontouchstart' in window || navigator.maxTouchPoints > 0);
+      state = 'MENU';
+      enterState();
+    },
+    startMode: function(mode) {
+      gameMode = mode;
+      state = 'PLAYING';
+      enterState();
+    },
+    restart: function() {
+      state = 'PLAYING';
+      enterState();
+    },
+    goToMenu: function() {
+      state = 'MENU';
+      enterState();
+    },
+    togglePause: function() {
+      if (state === 'PLAYING') { state = 'PAUSED'; enterState(); }
+      else if (state === 'PAUSED') { state = 'PLAYING'; enterState(); }
+    },
+    getMode: function() { return gameMode; },
+    update: function(dt) {
+      updateExplosions(dt);
+      switch (state) {
+        case 'PLAYING': updatePlaying(dt); break;
+      }
+    },
+    isDesktop: isDesktop
+  };
+})();
+
+renderer.domElement.addEventListener('click', function(e) { Game.handleClick(e.clientX, e.clientY); });
+renderer.domElement.addEventListener('touchstart', function(e) {
+  e.preventDefault();
+  var t = e.touches[0];
+  Game.handleClick(t.clientX, t.clientY);
+}, { passive: false });
 
 document.getElementById('modeList').addEventListener('click', function(e) {
   var btn = e.target.closest('[data-mode]');
@@ -608,15 +696,14 @@ document.getElementById('resumeBtn').addEventListener('click', function() { Game
 document.getElementById('restartBtn').addEventListener('click', function() { Game.restart(); });
 document.getElementById('quitBtn').addEventListener('click', function() { Game.goToMenu(); });
 
-spawnBalloon();
+Game.init();
 
 var lastTime = performance.now();
 function animate(time) {
   requestAnimationFrame(animate);
   var dt = Math.min((time - lastTime) / 1000, 0.05);
   lastTime = time;
-  updatePlaying(dt);
-  updateExplosions(dt);
+  Game.update(dt);
   if (screenShake > 0) {
     var intensity = screenShake * 15;
     camera.position.x = (Math.random() - 0.5) * intensity;
