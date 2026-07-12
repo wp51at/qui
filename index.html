@@ -444,6 +444,8 @@ function animate(time) {
     var intensity = screenShake * 15;
     camera.position.x = (Math.random() - 0.5) * intensity;
     screenShake = Math.max(0, screenShake - dt * 2);
+  } else {
+    camera.position.x = 0;
   }
   renderer.render(scene, camera);
 }
