@@ -2,14 +2,13 @@ import * as THREE from 'three';
 
 var canvas = document.getElementById('gameCanvas');
 var W, H;
-var _z0vec = new THREE.Vector3(), _z0dir = new THREE.Vector3(), _z0out = new THREE.Vector3();
+var _z0vec = new THREE.Vector3(), _z0dir = new THREE.Vector3();
 
 function intersectZ0(nx, ny) {
   _z0vec.set(nx, ny, 0.5).unproject(camera);
   _z0dir.copy(_z0vec).sub(camera.position);
-  if (Math.abs(_z0dir.z) < 1e-8) return _z0out.set(0, 0, 0);
-  var t = -camera.position.z / _z0dir.z;
-  return _z0out.copy(camera.position).addScaledVector(_z0dir, t);
+  if (Math.abs(_z0dir.z) < 1e-8) return new THREE.Vector3();
+  return new THREE.Vector3().copy(camera.position).addScaledVector(_z0dir, -camera.position.z / _z0dir.z);
 }
 
 function updateVisibleBounds() {
@@ -953,7 +952,9 @@ var Game = (function() {
     } else {
       type = 'normal'; value = Math.floor(Math.random() * 9) + 1;
     }
-    var baseX = Math.random() * W;
+    var u = Math.random(), v = Math.random();
+    var baseX = W / 2 + Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v) * (W / 4);
+    baseX = Math.max(0, Math.min(W, baseX));
     new Balloon(type, value, undefined, baseX, -(20 + Math.random() * 40));
   }
 
