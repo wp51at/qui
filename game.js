@@ -2,14 +2,14 @@ import * as THREE from 'three';
 
 var canvas = document.getElementById('gameCanvas');
 var W, H;
-var _z0vec = new THREE.Vector3(), _z0dir = new THREE.Vector3();
+var _z0vec = new THREE.Vector3(), _z0dir = new THREE.Vector3(), _z0out = new THREE.Vector3();
 
 function intersectZ0(nx, ny) {
   _z0vec.set(nx, ny, 0.5).unproject(camera);
   _z0dir.copy(_z0vec).sub(camera.position);
-  if (Math.abs(_z0dir.z) < 1e-8) return new THREE.Vector3();
+  if (Math.abs(_z0dir.z) < 1e-8) return _z0out.set(0, 0, 0);
   var t = -camera.position.z / _z0dir.z;
-  return new THREE.Vector3().copy(camera.position).add(_z0dir.multiplyScalar(t));
+  return _z0out.copy(camera.position).addScaledVector(_z0dir, t);
 }
 
 function updateVisibleBounds() {
@@ -68,7 +68,7 @@ var Storage = (function() {
         leaderboard: {},
         achievements: [],
         stats: { totalGames: 0, totalPops: 0, bestScores: {}, totalTime: 0, modesPlayed: [], challenges: [] },
-        settings: { soundEnabled: true, musicEnabled: true, ghostEnabled: true }
+        settings: { soundEnabled: true, ghostEnabled: true }
       };
     }
   }
@@ -105,6 +105,8 @@ var loader = new THREE.TextureLoader();
 loader.crossOrigin = 'anonymous';
 loader.load('https://assets.699pic.com/public/web/images/601/493/108.jpg!seo.v1', function(tex) {
   scene.background = tex;
+}, undefined, function() {
+  scene.background = new THREE.Color(0x1a1a2e);
 });
 
 var camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 2000);
@@ -718,7 +720,6 @@ function renderChallenges() {
 function renderSettings() {
   var sets = Storage.getSettings();
   document.getElementById('soundToggle').checked = sets.soundEnabled;
-  document.getElementById('musicToggle').checked = sets.musicEnabled;
   document.getElementById('ghostToggle').checked = sets.ghostEnabled;
 }
 
@@ -1145,10 +1146,6 @@ document.querySelectorAll('[data-lb-tab]').forEach(function(btn) {
 document.getElementById('soundToggle').addEventListener('change', function() {
   Storage.updateSettings({ soundEnabled: this.checked });
   AudioEngine.setEnabled(this.checked);
-});
-
-document.getElementById('musicToggle').addEventListener('change', function() {
-  Storage.updateSettings({ musicEnabled: this.checked });
 });
 
 document.getElementById('ghostToggle').addEventListener('change', function() {
