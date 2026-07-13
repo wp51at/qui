@@ -469,9 +469,12 @@ function createBalloonMesh(type, value, hue) {
 
   var actualHue = hue !== undefined ? Math.round(hue / 30) * 30 : 0;
   var rimKey = actualHue;
-  var rimCanvas = _rimCache[rimKey];
-  if (!rimCanvas) { rimCanvas = generateRimHighlight(rimKey); _rimCache[rimKey] = rimCanvas; }
-  var rimMap = new THREE.CanvasTexture(rimCanvas);
+  var rimMap = _rimCache[rimKey];
+  if (!rimMap) {
+    var rimCanvas = generateRimHighlight(rimKey);
+    rimMap = new THREE.CanvasTexture(rimCanvas);
+    _rimCache[rimKey] = rimMap;
+  }
   var rimMat = new THREE.SpriteMaterial({ map: rimMap, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
   var rimSprite = new THREE.Sprite(rimMat);
   rimSprite.position.set(radius * 0.25, radius * 0.35, radius * 0.7);
@@ -505,6 +508,7 @@ function createBalloonMesh(type, value, hue) {
   group.add(knot);
 
   // 自然弯曲的绳子（参考图风格）
+  // stringLength: Three.js 世界单位（与场景坐标系一致，正交投影下 1 单位 ≈ 1 像素）
   var stringStartY = -radius * 1.08 - 6;
   var stringLength = 32 + Math.random() * 16;
   var swayOffset = (Math.random() - 0.5) * 8;
@@ -593,27 +597,25 @@ function generateBalloonLabel(text, radius) {
   return c;
 }
 
-class Balloon {
-  constructor(type, value, hue, baseX, baseY) {
-    this.type = type;
-    this.value = value;
-    this.baseX = baseX;
-    this.x = baseX;
-    this.y = baseY !== undefined ? baseY : Math.random() * (H + 160) - 60;
-    this.radius = getBalloonRadius(type, value);
-    this.active = true;
-    this.popped = false;
-    this.vy = 80 + Math.random() * 120;
-    this.swayAmp = 15 + Math.random() * 25;
-    this.swayFreq = 0.6 + Math.random() * 0.8;
-    this.swayPhase = Math.random() * Math.PI * 2;
-    this.mesh = createBalloonMesh(type, value, hue);
-    this.mesh.position.set(this.x - W / 2, this.y - H / 2, 0);
-    this.mesh.userData.balloon = this;
-    scene.add(this.mesh);
-    balloonMeshes.push(this.mesh);
-    _rebuildRayTargets();
-  }
+function Balloon(type, value, hue, baseX, baseY) {
+  this.type = type;
+  this.value = value;
+  this.baseX = baseX;
+  this.x = baseX;
+  this.y = baseY !== undefined ? baseY : Math.random() * (H + 160) - 60;
+  this.radius = getBalloonRadius(type, value);
+  this.active = true;
+  this.popped = false;
+  this.vy = 80 + Math.random() * 120;
+  this.swayAmp = 15 + Math.random() * 25;
+  this.swayFreq = 0.6 + Math.random() * 0.8;
+  this.swayPhase = Math.random() * Math.PI * 2;
+  this.mesh = createBalloonMesh(type, value, hue);
+  this.mesh.position.set(this.x - W / 2, this.y - H / 2, 0);
+  this.mesh.userData.balloon = this;
+  scene.add(this.mesh);
+  balloonMeshes.push(this.mesh);
+  _rebuildRayTargets();
 }
 
 var UI = {
