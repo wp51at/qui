@@ -340,13 +340,17 @@ function updateExplosions(dt) {
           }
         });
       } else {
+        e.popMesh.traverse(function(child) {
+          if (child.material) child.material.dispose();
+          if (child.geometry) child.geometry.dispose();
+        });
         scene.remove(e.popMesh);
         e.popMesh = null;
       }
     }
     if (e.flash) {
       e.flashLife -= dt;
-      if (e.flashLife <= 0) { if (e.flash.material.map) e.flash.material.map.dispose(); scene.remove(e.flash); e.flash = null; }
+      if (e.flashLife <= 0) { if (e.flash.material.map) e.flash.material.map.dispose(); e.flash.material.dispose(); scene.remove(e.flash); e.flash = null; }
       else e.flash.material.opacity = e.flashLife / 0.1;
     }
     var posArr = e.points.geometry.attributes.position.array;
@@ -372,6 +376,8 @@ function updateExplosions(dt) {
     e.points.geometry.attributes.size.needsUpdate = true;
     e.points.material.opacity = alive > 0 ? totalLife / totalMax : 0;
     if (alive === 0 && !e.flash) {
+      e.points.geometry.dispose();
+      e.points.material.dispose();
       scene.remove(e.points);
       explosions.splice(i, 1);
     }
@@ -644,7 +650,6 @@ var UI = {
     var stats = '击中: ' + totalPops + '  最大连击: ' + maxCombo + '  时间: ' + Math.round(gameTime) + 's';
     if (best > 0) stats += '  最佳: ' + best;
     document.getElementById('finalStats').textContent = stats;
-    document.getElementById('replayBtn').style.display = 'none';
   }
 };
 
@@ -811,13 +816,34 @@ var Game = (function() {
 
   function cleanupBalloons() {
     for (var i = balloonMeshes.length - 1; i >= 0; i--) {
-      scene.remove(balloonMeshes[i]);
+      var mesh = balloonMeshes[i];
+      mesh.traverse(function(child) {
+        if (child.material) child.material.dispose();
+        if (child.geometry) child.geometry.dispose();
+      });
+      scene.remove(mesh);
     }
     balloonMeshes.length = 0;
     _rayTargets.length = 0;
     for (var i = explosions.length - 1; i >= 0; i--) {
-      if (explosions[i].flash) scene.remove(explosions[i].flash);
-      if (explosions[i].points) scene.remove(explosions[i].points);
+      var e = explosions[i];
+      if (e.flash) {
+        if (e.flash.material.map) e.flash.material.map.dispose();
+        e.flash.material.dispose();
+        scene.remove(e.flash);
+      }
+      if (e.points) {
+        e.points.geometry.dispose();
+        e.points.material.dispose();
+        scene.remove(e.points);
+      }
+      if (e.popMesh) {
+        e.popMesh.traverse(function(child) {
+          if (child.material) child.material.dispose();
+          if (child.geometry) child.geometry.dispose();
+        });
+        scene.remove(e.popMesh);
+      }
     }
     explosions.length = 0;
   }
@@ -962,6 +988,7 @@ var Game = (function() {
   }
 
   function recordGhostClick(x, y) {
+    if (!Storage.getSettings().ghostEnabled) return;
     ghostRecording.push({ t: gameTime * 1000, x: x / W, y: y / H });
   }
 
@@ -991,8 +1018,8 @@ var Game = (function() {
     var effects = [
       function() { score *= 2; UI.updateScore(score); showFloatingText(W / 2, H / 2, '+x2!', '#ffa500', 36); },
       function() { score = Math.max(0, Math.floor(score / 2)); UI.updateScore(score); showFloatingText(W / 2, H / 2, '÷2!', '#6bcbff', 36); },
-      function() { speedMultiplier *= 1.25; showFloatingText(W / 2, H / 2, '⇡ SPEED', '#ffa500', 36); },
-      function() { speedMultiplier *= 0.8; showFloatingText(W / 2, H / 2, '⇣ SLOW', '#32cd32', 36); },
+      function() { speedMultiplier = Math.min(3.0, speedMultiplier * 1.25); showFloatingText(W / 2, H / 2, '⇡ SPEED', '#ffa500', 36); },
+      function() { speedMultiplier = Math.max(0.3, speedMultiplier * 0.8); showFloatingText(W / 2, H / 2, '⇣ SLOW', '#32cd32', 36); },
       function() { if (timer > 0) { timer = 0; showFloatingText(W / 2, H / 2, 'TIME OUT!', '#ff4444', 40); } },
       function() { score = 0; UI.updateScore(score); showFloatingText(W / 2, H / 2, 'SCORE → 0', '#dc143c', 36); }
     ];
@@ -1044,8 +1071,10 @@ var Game = (function() {
     },
     getMode: function() { return gameMode; },
     update: function(dt) {
-      updateExplosions(dt);
-      updateFloatingTexts(dt);
+      if (state === STATE.PLAYING || state === STATE.REPLAY) {
+        updateExplosions(dt);
+        updateFloatingTexts(dt);
+      }
       switch (state) {
         case STATE.PLAYING: updatePlaying(dt); break;
         case STATE.REPLAY: updateReplay(dt); break;
