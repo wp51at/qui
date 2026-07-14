@@ -2,20 +2,20 @@ import * as THREE from 'three';
 
 var canvas = document.getElementById('gameCanvas');
 var W, H;
-var _z0vec = new THREE.Vector3(), _z0dir = new THREE.Vector3();
+var _z0Vec = new THREE.Vector3(), _z0Dir = new THREE.Vector3();
 
-function intersectZ0(nx, ny) {
-  _z0vec.set(nx, ny, 0.5).unproject(camera);
-  _z0dir.copy(_z0vec).sub(camera.position);
-  if (Math.abs(_z0dir.z) < 1e-8) return new THREE.Vector3();
-  return new THREE.Vector3().copy(camera.position).addScaledVector(_z0dir, -camera.position.z / _z0dir.z);
+function intersectZPlane(nx, ny) {
+  _z0Vec.set(nx, ny, 0.5).unproject(camera);
+  _z0Dir.copy(_z0Vec).sub(camera.position);
+  if (Math.abs(_z0Dir.z) < 1e-8) return new THREE.Vector3();
+  return new THREE.Vector3().copy(camera.position).addScaledVector(_z0Dir, -camera.position.z / _z0Dir.z);
 }
 
 function updateVisibleBounds() {
   camera.updateMatrixWorld();
-  var bl = intersectZ0(-1, -1);
-  var br = intersectZ0(1, -1);
-  var tl = intersectZ0(-1, 1);
+  var bl = intersectZPlane(-1, -1);
+  var br = intersectZPlane(1, -1);
+  var tl = intersectZPlane(-1, 1);
   W = br.x - bl.x;
   H = tl.y - bl.y;
 }
@@ -27,15 +27,44 @@ var _geoCache = {};
 var _labelCache = {};
 var _rimCache = {};
 var _specTexture = null;
-var _rayTargets = [];
+var _matCache = {};
 
-function _rebuildRayTargets() {
-  _rayTargets.length = 0;
-  for (var i = 0; i < balloonMeshes.length; i++) {
-    balloonMeshes[i].traverse(function(child) {
-      if (child.isMesh && child.geometry.type === 'SphereGeometry') _rayTargets.push(child);
-    });
-  }
+// ---- named gameplay constants (tuning values, do not change) ----
+var MIN_BALLOON_RADIUS = 28;
+var BASE_BALLOON_RADIUS = 40;
+var INNER_SPHERE_RATIO = 0.88;
+var COMBO_STEP = 5;
+var BOMB_PROBABILITY = 0.1;
+var QUESTION_THRESHOLD = 0.2;
+var SCREEN_SHAKE_DURATION = 0.3;
+var SCREEN_SHAKE_INTENSITY = 15;
+var BOMB_PENALTY = 30;
+var BOMB_PARTICLE_COUNT = 60;
+var NORMAL_PARTICLE_COUNT = 35;
+var CAMERA_DISTANCE_Z = 700;
+var CAMERA_HEIGHT_Y = 300;
+var FOV = 60;
+
+function disposeObject3D(obj) {
+  if (!obj) return;
+  obj.traverse(function(child) {
+    if (child.geometry) {
+      // Skip cached geometries — they may be shared with live balloons
+      for (var k in _geoCache) {
+        if (_geoCache[k] === child.geometry) return;
+      }
+      child.geometry.dispose();
+    }
+    if (child.material) {
+      // Skip cached materials — shared across balloons
+      for (var mk in _matCache) {
+        if (_matCache[mk] === child.material) return;
+      }
+      if (child.material.map) child.material.map.dispose();
+      child.material.dispose();
+    }
+  });
+  if (obj.parent) obj.parent.remove(obj);
 }
 
 var AudioEngine = (function() {
@@ -55,11 +84,12 @@ var AudioEngine = (function() {
 
 var Storage = (function() {
   var KEY = 'balloonAttack';
+  var _storage = window.localStorage;
   var data = null;
 
   function load() {
     try {
-      var raw = localStorage.getItem(KEY);
+      var raw = _storage.getItem(KEY);
       data = raw ? JSON.parse(raw) : null;
     } catch (e) { data = null; }
     if (!data) {
@@ -73,12 +103,13 @@ var Storage = (function() {
   }
 
   function save() {
-    try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {}
+    try { _storage.setItem(KEY, JSON.stringify(data)); } catch (e) {}
   }
 
   load();
 
   return {
+    init: function(storage) { _storage = storage || window.localStorage; load(); },
     getLeaderboard: function(mode) { return data.leaderboard[mode] || []; },
     addScore: function(mode, score) {
       if (!data.leaderboard[mode]) data.leaderboard[mode] = [];
@@ -108,9 +139,9 @@ loader.load('https://assets.699pic.com/public/web/images/601/493/108.jpg!seo.v1'
   scene.background = new THREE.Color(0x1a1a2e);
 });
 
-var camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 1, 2000);
-camera.position.set(0, 300, 700);
-camera.lookAt(0, 200, 0);
+var camera = new THREE.PerspectiveCamera(FOV, window.innerWidth / window.innerHeight, 1, 2000);
+camera.position.set(0, CAMERA_HEIGHT_Y, CAMERA_DISTANCE_Z);
+camera.lookAt(0, 0, 0);
 
 var renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -248,7 +279,7 @@ function triggerExplosion(mesh, type) {
   var isBomb = type === 'bomb';
 
   for (var i = balloonMeshes.length - 1; i >= 0; i--) {
-    if (balloonMeshes[i] === mesh) { balloonMeshes.splice(i, 1); _rebuildRayTargets(); break; }
+    if (balloonMeshes[i] === mesh) { balloonMeshes.splice(i, 1); break; }
   }
 
   var flashCanvas = document.createElement('canvas');
@@ -268,7 +299,7 @@ function triggerExplosion(mesh, type) {
   flash.scale.set(isBomb ? 200 : 120, isBomb ? 200 : 120, 1);
   scene.add(flash);
 
-  var pCount = isBomb ? 60 : 35;
+  var pCount = isBomb ? BOMB_PARTICLE_COUNT : NORMAL_PARTICLE_COUNT;
   var posArr = new Float32Array(pCount * 3);
   var colArr = new Float32Array(pCount * 3);
   var sizeArr = new Float32Array(pCount);
@@ -341,11 +372,7 @@ function updateExplosions(dt) {
           }
         });
       } else {
-        e.popMesh.traverse(function(child) {
-          if (child.material) child.material.dispose();
-          if (child.geometry) child.geometry.dispose();
-        });
-        scene.remove(e.popMesh);
+        disposeObject3D(e.popMesh);
         e.popMesh = null;
       }
     }
@@ -386,7 +413,7 @@ function updateExplosions(dt) {
 }
 
 function getBalloonRadius(type, value) {
-  return Math.max(28, type === 'normal' ? 40 - value * 2 : (type === 'question' ? 38 : 36));
+  return Math.max(MIN_BALLOON_RADIUS, type === 'normal' ? BASE_BALLOON_RADIUS - value * 2 : (type === 'question' ? 38 : 36));
 }
 
 // 参考图提取的真实气球色板
@@ -441,36 +468,32 @@ function createBalloonMesh(type, value, hue) {
   } else {
     color = new THREE.Color(0x8b0000);
   }
+  var colorHex = color.getHex();
 
-  var glassMat = new THREE.MeshStandardMaterial({
-    color: color,
-    roughness: 0.13,
-    metalness: 0.02,
-    transparent: true,
-    opacity: 0.88,
+  var matKeyG = 'g:' + colorHex + ':' + radius;
+  var glassMat = _matCache[matKeyG] || (_matCache[matKeyG] = new THREE.MeshStandardMaterial({
+    color: color, roughness: 0.13, metalness: 0.02,
+    transparent: true, opacity: 0.88,
     emissive: new THREE.Color(color).multiplyScalar(0.18),
-    emissiveIntensity: 0.15,
-    envMapIntensity: 0.5
-  });
+    emissiveIntensity: 0.15, envMapIntensity: 0.5
+  }));
   var outerMesh = new THREE.Mesh(geo, glassMat);
   outerMesh.castShadow = false;
   group.add(outerMesh);
 
-  var innerKey = 'inner:' + Math.round(radius * 0.88);
+  var innerKey = 'inner:' + Math.round(radius * INNER_SPHERE_RATIO);
   var innerGeo = _geoCache[innerKey];
   if (!innerGeo) {
-    innerGeo = new THREE.SphereGeometry(radius * 0.88, 24, 18);
+    innerGeo = new THREE.SphereGeometry(radius * INNER_SPHERE_RATIO, 24, 18);
     stretchSphereY(innerGeo, 1.08);
     _geoCache[innerKey] = innerGeo;
   }
-  var innerMat = new THREE.MeshStandardMaterial({
-    color: color,
-    roughness: 0.25,
-    metalness: 0.0,
-    transparent: true,
-    opacity: 0.25,
+  var matKeyI = 'i:' + colorHex + ':' + radius;
+  var innerMat = _matCache[matKeyI] || (_matCache[matKeyI] = new THREE.MeshStandardMaterial({
+    color: color, roughness: 0.25, metalness: 0.0,
+    transparent: true, opacity: 0.25,
     emissive: new THREE.Color(color).multiplyScalar(0.12)
-  });
+  }));
   var innerMesh = new THREE.Mesh(innerGeo, innerMat);
   group.add(innerMesh);
 
@@ -482,14 +505,21 @@ function createBalloonMesh(type, value, hue) {
     rimMap = new THREE.CanvasTexture(rimCanvas);
     _rimCache[rimKey] = rimMap;
   }
-  var rimMat = new THREE.SpriteMaterial({ map: rimMap, transparent: true, opacity: 0.55, blending: THREE.AdditiveBlending, depthWrite: false });
+  var rimMatKey = 'r:' + rimKey;
+  var rimMat = _matCache[rimMatKey] || (_matCache[rimMatKey] = new THREE.SpriteMaterial({
+    map: rimMap, transparent: true, opacity: 0.55,
+    blending: THREE.AdditiveBlending, depthWrite: false
+  }));
   var rimSprite = new THREE.Sprite(rimMat);
   rimSprite.position.set(radius * 0.25, radius * 0.35, radius * 0.7);
   rimSprite.scale.set(radius * 1.4, radius * 1.4, 1);
   group.add(rimSprite);
 
   if (!_specTexture) _specTexture = new THREE.CanvasTexture(generateHighlightCanvas());
-  var specMat = new THREE.SpriteMaterial({ map: _specTexture, transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false });
+  var specMat = _matCache['spec'] || (_matCache['spec'] = new THREE.SpriteMaterial({
+    map: _specTexture, transparent: true, opacity: 0.6,
+    blending: THREE.AdditiveBlending, depthWrite: false
+  }));
   var specSprite = new THREE.Sprite(specMat);
   specSprite.position.set(radius * 0.35, radius * 0.48, radius * 0.78);
   specSprite.scale.set(radius * 0.7, radius * 0.7, 1);
@@ -502,20 +532,24 @@ function createBalloonMesh(type, value, hue) {
     labelMap = new THREE.CanvasTexture(generateBalloonLabel(labelText, radius));
     _labelCache[labelKey] = labelMap;
   }
-  var labelMat = new THREE.SpriteMaterial({ map: labelMap, transparent: true, depthTest: false, depthWrite: false });
+  var labelMatKey = 'l:' + labelKey;
+  var labelMat = _matCache[labelMatKey] || (_matCache[labelMatKey] = new THREE.SpriteMaterial({
+    map: labelMap, transparent: true, depthTest: false, depthWrite: false
+  }));
   var label = new THREE.Sprite(labelMat);
   label.position.set(0, 0, 0);
   var labelSize = radius * 1.4;
   label.scale.set(labelSize * 1.3, labelSize, 1);
   group.add(label);
 
-  var knotMat = new THREE.MeshBasicMaterial({ color: 0xaa8866 });
-  var knot = new THREE.Mesh(new THREE.ConeGeometry(3, 6, 6), knotMat);
+  var knotMat = _matCache['knot'] || (_matCache['knot'] = new THREE.MeshBasicMaterial({ color: 0xaa8866 }));
+  var knotGeoKey = 'knot:' + radius;
+  var knotGeo = _geoCache[knotGeoKey] || (_geoCache[knotGeoKey] = new THREE.ConeGeometry(3, 6, 6));
+  var knot = new THREE.Mesh(knotGeo, knotMat);
   knot.position.y = -radius * 1.08 - 3;
   group.add(knot);
 
   // 自然弯曲的绳子（参考图风格）
-  // stringLength: Three.js 世界单位（与场景坐标系一致，正交投影下 1 单位 ≈ 1 像素）
   var stringStartY = -radius * 1.08 - 6;
   var stringLength = 32 + Math.random() * 16;
   var swayOffset = (Math.random() - 0.5) * 8;
@@ -527,7 +561,7 @@ function createBalloonMesh(type, value, hue) {
     new THREE.Vector3(swayOffset * 0.15, stringStartY - stringLength, 0)
   ]);
   var tubeGeo = new THREE.TubeGeometry(curve, 16, 0.5, 6, false);
-  var stringMat = new THREE.MeshBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.8 });
+  var stringMat = _matCache['str'] || (_matCache['str'] = new THREE.MeshBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.8 }));
   var string = new THREE.Mesh(tubeGeo, stringMat);
   group.add(string);
 
@@ -622,12 +656,15 @@ function Balloon(type, value, hue, baseX, baseY) {
   this.mesh.userData.balloon = this;
   scene.add(this.mesh);
   balloonMeshes.push(this.mesh);
-  _rebuildRayTargets();
+}
+
+function hideAllPanels() {
+  document.querySelectorAll('.ui-panel').forEach(function(el) { el.classList.add('ui-hidden'); });
 }
 
 var UI = {
   show: function(id) {
-    document.querySelectorAll('.ui-panel').forEach(function(el) { el.classList.add('ui-hidden'); });
+    hideAllPanels();
     var panel = document.getElementById(id);
     if (panel) panel.classList.remove('ui-hidden');
   },
@@ -671,6 +708,38 @@ function renderLeaderboard(mode) {
   document.getElementById('lbEntries').innerHTML = html;
 }
 
+function renderGrid(containerId, items, completedList, opts) {
+  opts = opts || {};
+  var outerStyle = opts.columns
+    ? 'display:grid;grid-template-columns:repeat(' + opts.columns + ',1fr);gap:8px;max-width:380px;margin:16px auto'
+    : 'max-width:380px;margin:16px auto';
+  var html = '<div style="' + outerStyle + '">';
+  items.forEach(function(item) {
+    var done = completedList.indexOf(item.id) !== -1;
+    var c, bg, bd, dc;
+    if (done) {
+      c = opts.doneColor || '#ffdd57';
+      bg = opts.doneBg || 'rgba(255,215,0,0.1)';
+      bd = opts.doneBorder || 'rgba(255,215,0,0.3)';
+      dc = opts.doneDesc || 'rgba(255,255,255,0.6)';
+    } else {
+      c = opts.undoneColor || 'rgba(255,255,255,0.4)';
+      bg = opts.undoneBg || 'rgba(255,255,255,0.03)';
+      bd = opts.undoneBorder || 'rgba(255,255,255,0.1)';
+      dc = opts.undoneDesc || 'rgba(255,255,255,0.25)';
+    }
+    var pad = opts.padding || '8px';
+    var tSize = opts.titleSize || '12px';
+    var dSize = opts.descSize || '10px';
+    var mBot = opts.itemMargin || '';
+    html += '<div style="background:' + bg + ';border:1px solid ' + bd + ';border-radius:6px;padding:' + pad + ';text-align:left' + (mBot ? ';margin-bottom:' + mBot : '') + '">' +
+      '<div style="color:' + c + ';font-size:' + tSize + ';font-weight:bold">' + (done ? '✓ ' : '') + item.name + '</div>' +
+      '<div style="color:' + dc + ';font-size:' + dSize + '">' + item.desc + '</div></div>';
+  });
+  html += '</div>';
+  document.getElementById(containerId).innerHTML = html;
+}
+
 function renderAchievements() {
   var ACHIEVEMENTS = [
     { id: 'first_blood', name: 'First Blood', desc: 'Pop your first balloon' },
@@ -679,20 +748,12 @@ function renderAchievements() {
     { id: 'combo10', name: 'Combo King', desc: 'Reach 10 combo' },
     { id: 'pop_100', name: 'Balloon Hunter', desc: 'Pop 100 balloons total' }
   ];
-  var unlocked = Storage.getAchievements();
-  var html = '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;max-width:380px;margin:16px auto">';
-  ACHIEVEMENTS.forEach(function(a) {
-    var isUnlocked = unlocked.indexOf(a.id) !== -1;
-    html += '<div style="background:' + (isUnlocked ? 'rgba(255,215,0,0.1)' : 'rgba(255,255,255,0.03)') +
-      ';border:1px solid ' + (isUnlocked ? 'rgba(255,215,0,0.3)' : 'rgba(255,255,255,0.1)') +
-      ';border-radius:6px;padding:8px;text-align:left">' +
-      '<div style="color:' + (isUnlocked ? '#ffdd57' : 'rgba(255,255,255,0.4)') +
-      ';font-size:12px;font-weight:bold">' + (isUnlocked ? '✓ ' : '') + a.name + '</div>' +
-      '<div style="color:' + (isUnlocked ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.25)') +
-      ';font-size:10px">' + a.desc + '</div></div>';
+  renderGrid('achGrid', ACHIEVEMENTS, Storage.getAchievements(), {
+    columns: 2,
+    doneColor: '#ffdd57', doneBg: 'rgba(255,215,0,0.1)', doneBorder: 'rgba(255,215,0,0.3)', doneDesc: 'rgba(255,255,255,0.6)',
+    undoneColor: 'rgba(255,255,255,0.4)', undoneBg: 'rgba(255,255,255,0.03)', undoneBorder: 'rgba(255,255,255,0.1)', undoneDesc: 'rgba(255,255,255,0.25)',
+    padding: '8px', titleSize: '12px', descSize: '10px'
   });
-  html += '</div>';
-  document.getElementById('achGrid').innerHTML = html;
 }
 
 function renderChallenges() {
@@ -700,20 +761,11 @@ function renderChallenges() {
     { id: 'ch_500', name: 'Point Collector', desc: 'Score 500 points' },
     { id: 'ch_combo15', name: 'Sharpshooter', desc: 'Reach 15 combo' }
   ];
-  var completed = Storage.getStats().challenges || [];
-  var html = '<div style="max-width:380px;margin:16px auto">';
-  CHALLENGES.forEach(function(c) {
-    var done = completed.indexOf(c.id) !== -1;
-    html += '<div style="background:' + (done ? 'rgba(0,255,136,0.08)' : 'rgba(255,255,255,0.03)') +
-      ';border:1px solid ' + (done ? 'rgba(0,255,136,0.3)' : 'rgba(255,255,255,0.1)') +
-      ';border-radius:6px;padding:10px;margin-bottom:8px;text-align:left">' +
-      '<div style="color:' + (done ? '#00ff88' : '#fff') + ';font-size:14px;font-weight:bold">' +
-      (done ? '✓ ' : '') + c.name + '</div>' +
-      '<div style="color:' + (done ? 'rgba(0,255,136,0.5)' : 'rgba(255,255,255,0.4)') +
-      ';font-size:12px">' + c.desc + '</div></div>';
+  renderGrid('challengeList', CHALLENGES, Storage.getStats().challenges || [], {
+    doneColor: '#00ff88', doneBg: 'rgba(0,255,136,0.08)', doneBorder: 'rgba(0,255,136,0.3)', doneDesc: 'rgba(0,255,136,0.5)',
+    undoneColor: '#fff', undoneBg: 'rgba(255,255,255,0.03)', undoneBorder: 'rgba(255,255,255,0.1)', undoneDesc: 'rgba(255,255,255,0.4)',
+    padding: '10px', titleSize: '14px', descSize: '12px', itemMargin: '8px'
   });
-  html += '</div>';
-  document.getElementById('challengeList').innerHTML = html;
 }
 
 function renderSettings() {
@@ -787,7 +839,7 @@ var Game = (function() {
         scoreMultiplier = 1; speedMultiplier = 1;
         spawnTimer = 0; gameTime = 0;
         cleanupBalloons();
-        document.querySelectorAll('.ui-panel').forEach(function(el) { el.classList.add('ui-hidden'); });
+        hideAllPanels();
         UI.showHUD(true);
         UI.updateScore(0);
         UI.updateTimer(timer);
@@ -809,6 +861,7 @@ var Game = (function() {
         UI.updateTimer(timerMax);
         break;
       case STATE.PAUSED:
+        _stopLoop();
         UI.show('pausePanel');
         break;
     }
@@ -816,15 +869,9 @@ var Game = (function() {
 
   function cleanupBalloons() {
     for (var i = balloonMeshes.length - 1; i >= 0; i--) {
-      var mesh = balloonMeshes[i];
-      mesh.traverse(function(child) {
-        if (child.material) child.material.dispose();
-        if (child.geometry) child.geometry.dispose();
-      });
-      scene.remove(mesh);
+      disposeObject3D(balloonMeshes[i]);
     }
     balloonMeshes.length = 0;
-    _rayTargets.length = 0;
     for (var i = explosions.length - 1; i >= 0; i--) {
       var e = explosions[i];
       if (e.flash) {
@@ -838,11 +885,7 @@ var Game = (function() {
         scene.remove(e.points);
       }
       if (e.popMesh) {
-        e.popMesh.traverse(function(child) {
-          if (child.material) child.material.dispose();
-          if (child.geometry) child.geometry.dispose();
-        });
-        scene.remove(e.popMesh);
+        disposeObject3D(e.popMesh);
       }
     }
     explosions.length = 0;
@@ -933,9 +976,8 @@ var Game = (function() {
       mesh.position.y = b.y - H / 2;
 
       if (b.y > H + 100 || b.y < -200) {
-        scene.remove(mesh);
+        disposeObject3D(mesh);
         balloonMeshes.splice(i, 1);
-        _rebuildRayTargets();
       }
     }
   }
@@ -945,9 +987,9 @@ var Game = (function() {
     var r = Math.random();
     var type, value;
     var mode = MODES[gameMode] || MODES.classic;
-    if (mode.hasBombs && r < 0.1) {
+    if (mode.hasBombs && r < BOMB_PROBABILITY) {
       type = 'bomb'; value = 0;
-    } else if (r < 0.2) {
+    } else if (r < QUESTION_THRESHOLD) {
       type = 'question'; value = 0;
     } else {
       type = 'normal'; value = Math.floor(Math.random() * 9) + 1;
@@ -976,15 +1018,15 @@ var Game = (function() {
     } else if (b.type === 'question') {
       applyQuestionEffect();
     } else if (b.type === 'bomb') {
-      score = Math.max(0, score - 30);
-      screenShake = 0.3;
+      score = Math.max(0, score - BOMB_PENALTY);
+      screenShake = SCREEN_SHAKE_DURATION;
       showFloatingText(W / 2, H / 2, '-30', '#ff4444', 40);
     }
     if (isDesktop && MODES[gameMode] && MODES[gameMode].recordScore) {
       recordGhostClick(b.x, b.y);
     }
     triggerExplosion(b.mesh, b.type);
-    scoreMultiplier = 1 + Math.floor(combo / 5) * 0.5;
+    scoreMultiplier = 1 + Math.floor(combo / COMBO_STEP) * 0.5;
     UI.updateScore(score);
     UI.updateCombo(combo);
   }
@@ -1034,7 +1076,9 @@ var Game = (function() {
     mouse.x = ((clientX - rect.left) / rect.width) * 2 - 1;
     mouse.y = -((clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
-    var intersects = raycaster.intersectObjects(_rayTargets);
+    // Directly iterate balloonMeshes; recursive intersect tests all children.
+    // The first hit is the outer sphere (closest), avoiding double-count of inner sphere.
+    var intersects = raycaster.intersectObjects(balloonMeshes, true);
     if (intersects.length > 0) {
       var hit = intersects[0].object.parent.userData.balloon;
       if (hit && hit.active && !hit.popped) {
@@ -1066,12 +1110,12 @@ var Game = (function() {
       if (state === STATE.PLAYING) { state = STATE.PAUSED; enterState(); }
       else if (state === STATE.PAUSED) {
         state = STATE.PLAYING;
-        document.querySelectorAll('.ui-panel').forEach(function(el) { el.classList.add('ui-hidden'); });
+        hideAllPanels();
         UI.showHUD(true);
+        _startLoop();
         lastTime = performance.now();
       }
     },
-    getMode: function() { return gameMode; },
     update: function(dt) {
       if (state === STATE.PLAYING || state === STATE.REPLAY) {
         updateExplosions(dt);
@@ -1089,7 +1133,6 @@ var Game = (function() {
         enterState();
       }
     },
-    isDesktop: function() { return isDesktop; },
     startReplay: function() {
       var ghost = lastGhost;
       if (!ghost) return;
@@ -1162,7 +1205,7 @@ function animate(time) {
   lastTime = time;
   Game.update(dt);
   if (screenShake > 0) {
-    var intensity = screenShake * 15;
+    var intensity = screenShake * SCREEN_SHAKE_INTENSITY;
     camera.position.x = (Math.random() - 0.5) * intensity;
     screenShake = Math.max(0, screenShake - dt * 2);
   } else {
